@@ -8,7 +8,7 @@ services:
             - "8080:80"
         volumes:
             - ../web:/var/www/html/
-            - ./php/config.inc.php:/var/www/html/config.inc.php
+              #            - ./php/config.inc.php:/var/www/html/config.inc.php
         links:
             - db
         networks:
@@ -25,6 +25,7 @@ services:
             MYSQL_ROOT_PASSWORD: mrbs
         volumes:
             - ../tables.my.sql:/docker-entrypoint-initdb.d/010-tables.sql
+            - ./db/base_data.sql:/docker-entrypoint-initdb.d/020-base_data.sql
             - persistent:/var/lib/mysql
         networks:
             - default
