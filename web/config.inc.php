@@ -7,6 +7,7 @@ $vocab_override['en']['mrbs'] = "";
 $vocab_override['de']['mrbs'] = "";
 $confirmation_enabled=false;
 unset($booking_types);
+$min_booking_admin_level = 1;
 $locale = "de-de";
 $default_language_tokens = "de";
 $weekstarts = 1;
