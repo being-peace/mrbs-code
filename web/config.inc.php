@@ -5,7 +5,8 @@ namespace MRBS;
 $mrbs_company = "Hecken-mobil-E";
 $vocab_override['en']['mrbs'] = "";
 $vocab_override['de']['mrbs'] = "";
-
+$confirmation_enabled=false;
+unset($booking_types);
 $locale = "de-de";
 $default_language_tokens = "de";
 $weekstarts = 1;
