@@ -55,7 +55,7 @@ $vocab_override['de']["could_not_create_room"]     = "Ressource konnte nicht ang
 $vocab_override['de']["could_not_find_room"]       = "Ressource wurde nicht gefunden";
 
 
-$timezone = "Europe/London";
+$timezone = "Europe/Paris";
 $dbsys = "mysql";
 $db_host = "db";
 $db_database = "mrbs";
