@@ -10,6 +10,7 @@ unset($booking_types);
 $min_booking_admin_level = 1;
 $allow_cli = true;
 $locale = "de-de";
+$cli_language = "de";
 $default_language_tokens = "de";
 $weekstarts = 1;
 $enable_registration=false;
