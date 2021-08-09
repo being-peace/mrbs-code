@@ -85,6 +85,9 @@ $custom_fields = array();
 $entry_fields = array('create_by', 'name', 'description', 'start_time', 'end_time', 'room_id',
                       'type', 'confirmation_status', 'privacy_status');
 
+// ELKATO Change, No description, 09.08.2021
+$entry_fields = array_diff( $entry_fields, ['description'] );
+
 foreach ($entry_fields as $field)
 {
   if (!in_array($field, $edit_entry_field_order))
