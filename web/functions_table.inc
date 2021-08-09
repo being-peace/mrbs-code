@@ -331,7 +331,10 @@ function cell_html(array $cell, array $query_vars, $is_invalid = false) : string
                    ' class="' . $booking['type'] . '"' .
                    ' data-id="' . $booking['id'] . '"' .
                    ' data-type="' . $booking['type'] . '">';
-        $html .= htmlspecialchars($booking['name']) . '</a>';
+        // $html .= htmlspecialchars($booking['name']) . '</a>';
+        // ELKATO, with username, 09.08.2021
+        $html .= htmlspecialchars($booking['name']) . ', ' .
+                 htmlspecialchars(get_display_name($booking['create_by'])) . '</a>';
         $html .= "</div>";
       }
     }
