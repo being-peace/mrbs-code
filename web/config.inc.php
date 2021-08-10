@@ -58,9 +58,5 @@ $vocab_override['de']["could_not_find_room"]       = "Ressource wurde nicht gefu
 
 $timezone = "Europe/Paris";
 $dbsys = "mysql";
-$db_host = "db";
-$db_database = "mrbs";
-$db_login = "mrbs";
-$db_password = "mrbs";
-$db_tbl_prefix = "mrbs_";
-$db_persist = FALSE;
+
+require("access.inc");
