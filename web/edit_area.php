@@ -144,11 +144,14 @@ function get_fieldset_general(array $data)
   $fieldset->addElement($field);
 
   // Default type
-  $field = new FieldSelect();
-  $field->setLabel(get_vocab('default_type'))
-        ->setControlAttribute('name', 'area_default_type')
-        ->addSelectOptions(get_type_options(), $data['default_type'], true);
-  $fieldset->addElement($field);
+  $options = get_type_options(true);
+  if (count($options)>0) {
+    $field = new FieldSelect();
+    $field->setLabel(get_vocab('default_type'))
+          ->setControlAttribute('name', 'area_default_type')
+          ->addSelectOptions($options, $data['default_type'], true);
+    $fieldset->addElement($field);
+  }
 
   // Status - Enabled or Disabled
   $options = array('0' => get_vocab('enabled'),

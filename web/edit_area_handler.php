@@ -368,7 +368,8 @@ $sql_params[] = $area_confirmation_enabled;
 $assign_array[] = "confirmed_default=?";
 $sql_params[] = $area_confirmed_default;
 $assign_array[] = "default_type=?";
-$sql_params[] = $area_default_type;
+// The default_type is set even if there are no booking_types
+$sql_params[] = isset($area_default_type) ? $area_default_type : $default_type;
 $assign_array[] = "times_along_top=?";
 $sql_params[] = $area_times_along_top;
 
