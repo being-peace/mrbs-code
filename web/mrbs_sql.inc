@@ -107,15 +107,16 @@ function mrbsCheckFree(array $booking, $ignore, $repignore)
       $p_num = $start_date['minutes'];
       $p_end_num = $end_date['minutes'] - 1;
       if ($different_dates) {
-        $timestr = utf8_strftime($strftime_format['date'] . ", ", $row['start_time']) .
-                   htmlspecialchars($periods[$p_num]) . " - " .
-                   utf8_strftime($strftime_format['date'] . ", ", $row['end_time']) .
-                   htmlspecialchars($periods[$p_end_num]);
+        $timestr = $periods[$p_num] . ", " .
+                   utf8_strftime($strftime_format['date'], $row['start_time']) . " - " .
+                   $periods[$p_end_num] . ", " .
+                   utf8_strftime($strftime_format['date'], $row['end_time']);
       } else {
-        $timestr = htmlspecialchars($periods[$p_num]);
+        $timestr = $periods[$p_num];
         if ($p_num != $p_end_num) {
-            $timestr .= " - " . htmlspecialchars($periods[$p_end_num]);
+            $timestr .= " - " . $periods[$p_end_num];
         }
+        $timestr .= ", " . utf8_strftime($strftime_format['date'], $row['start_time']);
       }
     } else {
       if ($different_dates) {
@@ -125,6 +126,9 @@ function mrbsCheckFree(array $booking, $ignore, $repignore)
       }
       $timestr = utf8_strftime($date_format, $row['start_time']) . " - " .
                  utf8_strftime($date_format, $row['end_time']);
+      if (!$different_dates) {
+        $timestr .= ", " . utf8_strftime($strftime_format['date'], $row['start_time']);
+      }
     }
 
     if (is_private_event($row['private']) &&
@@ -135,9 +139,9 @@ function mrbsCheckFree(array $booking, $ignore, $repignore)
     }
 
     // enclose the viewday etc. links in a span to make it easier for JavaScript to strip them out
-    $vars = array('year'  => $starts['year'],
-                  'month' => $starts['mon'],
-                  'day'   => $starts['mday'],
+    $vars = array('year'  => $start_date['year'],
+                  'month' => $start_date['mon'],
+                  'day'   => $start_date['mday'],
                   'area'  => $area,
                   'room'  => $room_id);
 
@@ -145,7 +149,7 @@ function mrbsCheckFree(array $booking, $ignore, $repignore)
 
     $err[] = '<a href="' . htmlspecialchars(multisite('view_entry.php?id=' . $row['id'])) . '">' .
              htmlspecialchars($row['name']) . '</a>' .
-             ' (' . $timestr . ', ' . htmlspecialchars($row['room_name']) . ') ' .
+             ' (' . htmlspecialchars($timestr) . ', ' . htmlspecialchars($row['room_name']) . ') ' .
              '<span>(' .
              '<a href="' . htmlspecialchars(multisite("index.php?view=day&$query")) . '">' . get_vocab('viewday') . '</a> | ' .
              '<a href="' . htmlspecialchars(multisite("index.php?view=week&$query")) . '">' . get_vocab('viewweek') . '</a> | ' .
