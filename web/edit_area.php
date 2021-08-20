@@ -143,8 +143,9 @@ function get_fieldset_general(array $data)
         ->addSelectOptions(get_timezone_options(), $timezone, true);
   $fieldset->addElement($field);
 
-  // Default type
-  $options = get_type_options(true);
+  // Default type (get_type_options for non-admins makes more sense,
+  // otherwise non-admins may be presented a selection without default)
+  $options = get_type_options();
   if (count($options)>0) {
     $field = new FieldSelect();
     $field->setLabel(get_vocab('default_type'))
