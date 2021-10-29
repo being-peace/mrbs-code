@@ -174,6 +174,9 @@ $theme = "default";
 // Use the $custom_css_url to override the standard MRBS CSS.
 //$custom_css_url = 'css/custom.css';
 
+// Use the $custom_js_url to add your own JavaScript.
+//$custom_js_url = 'js/custom.js';
+
 
 /*******************
  * Calendar settings
@@ -299,7 +302,7 @@ $prevent_invalid_types = true;
 // no notion of when periods actually occur they are assumed to start
 // at the time below when we are enforcing book ahead policies.
 // The setting defines the time of day when bookings open.
-// This should be a in the format hh:mm using the 24 hour clock.
+// This should be a string in the format hh:mm using the 24 hour clock.
 $periods_booking_opens = '00:00';
 
 // When setting max_create_ahead and max_delete_ahead policies, the time interval is normally
@@ -348,7 +351,7 @@ $strftime_format['date_short']         = "%x";           // Used in Search resul
 $strftime_format['dayname']            = "%A";           // Used in Month view
 $strftime_format['dayname_edit']       = "%a";           // Used in edit_entry form
 $strftime_format['weekview_date']      = "%b %e";        // Used in the table header in Week view
-$strftime_format['weekview_headers']   = "%a<br>%b %e";  // Used in the table header in Month view (all rooms)
+$strftime_format['weekview_headers']   = "%a<br>%b %e";  // Used in the table header in Week view (all rooms)
 $strftime_format['monthview_headers']  = "%a<br>%e";     // Used in the table header in Month view (all rooms)
 $strftime_format['minical_monthname']  = "%B %Y";        // Used in mini calendar heading
 $strftime_format['minical_dayname']    = "%a";           // Used in mini calendar heading
@@ -437,6 +440,13 @@ $column_labels_both_ends = false;
 
 // Show a line in the day and week views corresponding to the current time
 $show_timeline = true;
+
+// For bookings that allow registration, show the number of people that have
+// registered and, if there is one, the registration limit.  This will typically
+// be appended to the description in the calendar view, eg "Lecture [12/40]".
+// The way the registration level is presented can be changed with a
+// $vocab_override config setting.
+$show_registration_level = true;
 
 // Define default starting view (month, week or day)
 // Default is day
@@ -527,8 +537,8 @@ $show_plus_link = false;   // Change to true to always show the (+) link as in
 
 // Choose which fields should be private by setting
 // $is_private_field['tablename.columnname'] = true
-// At the moment only fields in the entry table can be marked as private,
-// including custom fields, but with the exception of the following fields:
+// At the moment only fields in the entry and users table can be marked as private,
+// including custom fields, but with the exception of the following entry table fields:
 // start_time, end_time, entry_type, repeat_id, room_id, timestamp, type, status,
 // reminded, info_time, info_user, info_text.
 $is_private_field['entry.name'] = true;
@@ -640,6 +650,19 @@ $is_mandatory_field = array();
 // $is_mandatory_field['entry.terms_and_conditions'] = true;
 
 $is_mandatory_field['users.display_name'] = true;
+
+// You can also enter regular expressions for validating text field input using
+// the pattern attribute.  At the moment this is limited to custom fields in the
+// users table.  For example the following could be used to ensure a valid US ZIP
+// code (you might want to have a better regex - this is just for illustration):
+
+// $pattern['users.zip_code'] = "^[0-9]{5}(?:-[0-9]{4})?$";
+
+// You would probably also want to enter a custom error message by using
+// $vocab_override, with the tag consisting of "table.field.oninvalid" eg
+
+// $vocab_override['users.zip_code.oninvalid']['en'] = "Please enter a valid ZIP code, eg '12345' or '12345-6789'";
+
 
 // Set this to false if you do not want to have the ability to create events for which
 // other people can register.
@@ -1159,6 +1182,16 @@ $auth['only_admin_can_see_other_users'] = false;
 // not shown unless you have write access to the booking.
 $auth['show_registrant_names'] = false;
 
+// For events that allow registration you can also show the registrants' names in
+// the calendar view, whether or not you have write access to the booking.
+// NOTE: you also need $show_registration_level = true; for this to work.
+$auth['show_registrant_names_in_calendar'] = false;
+
+// You can additionally choose whether to show the registrants' names in the calendar
+// if the calendar is open to the public and the user is not logged in or has level 0 access.
+// NOTE: you also need $auth['show_registrant_names_in_calendar'] = true; for this to work
+$auth['show_registrant_names_in_public_calendar'] = false;
+
 // Set this to true if you want ordinary users to be able to register others.
 $auth['users_can_register_others'] = false;
 
@@ -1355,6 +1388,18 @@ $smtp_settings['secure'] = '';         // Encryption method: '', 'tls' or 'ssl' 
                                        // set to true.
 $smtp_settings['username'] = '';       // Username (if using authentication)
 $smtp_settings['password'] = '';       // Password (if using authentication)
+
+// The hostname to use in the Message-ID header and as default HELO string.
+// If empty, PHPMailer attempts to find one with, in order,
+// $_SERVER['SERVER_NAME'], gethostname(), php_uname('n'), or the value
+// 'localhost.localdomain'.
+$smtp_settings['hostname'] = '';
+
+// The SMTP HELO/EHLO name used for the SMTP connection.
+// Default is $smtp_settings['hostname']. If $smtp_settings['hostname'] is empty, PHPMailer attempts to find
+// one with the same method described above for $smtp_settings['hostname'].
+$smtp_settings['helo'] = '';
+
 $smtp_settings['disable_opportunistic_tls'] = false; // Set this to true to disable
                                                      // opportunistic TLS
                                                      // https://github.com/PHPMailer/PHPMailer/wiki/Troubleshooting#opportunistic-tls

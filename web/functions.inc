@@ -125,6 +125,34 @@ function generate_token($length)
 }
 
 
+// A locale aware version of strcasecmp()
+function strcasecmp_locale(string $string1, string $string2) : int
+{
+  // Sort the array.  If the order is reversed then $string1 > $string2
+  // (When this function is being used as a callback for usort, and if the original array
+  // is sorted in ascending order, which it well might be if it's the result of
+  // an SQL query with an ORDER BY, then it's fastest to test for $string1 > $string2
+  // first, as below.)
+  $original_array = array($string1, $string2);
+  $array = $original_array;
+  asort($array,SORT_LOCALE_STRING | SORT_FLAG_CASE);
+  if ($array !== $original_array)
+  {
+    return 1;
+  }
+  // Otherwise, flip the array and try again.  If the order is reversed then $string2 > $string1
+  $original_array = array($string2, $string1);
+  $array = $original_array;
+  asort($array,SORT_LOCALE_STRING | SORT_FLAG_CASE);
+  if ($array !== $original_array)
+  {
+    return -1;
+  }
+  // Otherwise they must be equal
+  return 0;
+}
+
+
 // Returns a name in the format last_name first_name for sorting
 function get_sortable_name($name)
 {
@@ -158,6 +186,12 @@ function get_sortable_name($name)
   }
 
   return $result;
+}
+
+
+function compare_display_names(string $name1, string $name2) : int
+{
+  return strcasecmp_locale(get_sortable_name($name1), get_sortable_name($name2));
 }
 
 
@@ -291,7 +325,7 @@ function url_get_contents($url, $if_modified_since=null)
 }
 
 
-function get_type_options($include_admin_types=false)
+function get_type_options(bool $include_admin_types) : array
 {
   global $booking_types, $auth;
 
@@ -601,7 +635,7 @@ function url_path()
 // Returns the base URL for MRBS.  If the config variable $url_base is set then that
 // overrides the automatic calculation.  A '/' will be appended to the end of the string,
 // unless it is empty or already ends in a '/'.
-function url_base()
+function url_base() : string
 {
   global $url_base, $server;
 
@@ -618,6 +652,13 @@ function url_base()
     $result = '';
   }
 
+  // Add a scheme if we haven't got one
+  if (null === parse_url($result, PHP_URL_SCHEME))
+  {
+    $result = ((is_https()) ? 'https' : 'http') . '://' . $result;
+  }
+
+  // Add a trailing '/' if there isn't one
   if (($result !== '') && (substr($result, -1) !== '/'))
   {
     $result .= '/';
@@ -719,7 +760,7 @@ function build_url(array $parts)
 
 
 // A wrapper for sending a Location header.  This function will urlencode and add
-// the site parameter as necesary
+// the site parameter as necessary
 function location_header($location)
 {
   // Add the site parameter if necessary
@@ -1302,7 +1343,7 @@ function is_in_booking_day($t)
 
 // Takes a Unix timestamp and sets the time, while keeping the day the same.
 // $time is a string in hh:mm format (24 hour clock)
-function timestamp_set_time($timestamp, $time)
+function timestamp_set_time(int $timestamp, string $time) : int
 {
   list($hour, $minute) = explode(':', $time);
   $hour = intval($hour);
@@ -1775,6 +1816,25 @@ function split_iso_date($date)
   unset($value);  // Break the reference (not necessary here, but good practice)
 
   return $result;
+}
+
+
+// Validates that a string is a valid ISO date in yyyy-mm-dd format
+function validate_iso_date($date) : bool
+{
+  if (!is_string($date))
+  {
+    return false;
+  }
+
+  // Try creating a DateTime object.  If that is successful and
+  // the inverse operation gives the original string then it is
+  // valid.  (This is to check that, for example, 2021-09-31 hasn't
+  // been converted into 2021-10-01).
+  $format = 'Y-m-d';
+  $datetime = DateTime::createFromFormat($format, $date);
+
+  return ($datetime && ($datetime->format($format) === $date));
 }
 
 

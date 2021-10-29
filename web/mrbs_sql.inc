@@ -105,28 +105,39 @@ function mrbsCheckFree(array $booking, $ignore, $repignore)
     if ($enable_periods)
     {
       $p_num = $start_date['minutes'];
-      $p_end_num = $end_date['minutes'] - 1;
-      if ($different_dates) {
+      // The number of periods might have been reduced since the booking was made
+      $p_end_num = min(count($periods), $end_date['minutes']) - 1;
+      if ($different_dates)
+      {
         $timestr = $periods[$p_num] . ", " .
                    utf8_strftime($strftime_format['date'], $row['start_time']) . " - " .
                    $periods[$p_end_num] . ", " .
                    utf8_strftime($strftime_format['date'], $row['end_time']);
-      } else {
+      }
+      else
+      {
         $timestr = $periods[$p_num];
-        if ($p_num != $p_end_num) {
-            $timestr .= " - " . $periods[$p_end_num];
+        if ($p_num != $p_end_num)
+        {
+          $timestr .= " - " . $periods[$p_end_num];
         }
         $timestr .= ", " . utf8_strftime($strftime_format['date'], $row['start_time']);
       }
-    } else {
-      if ($different_dates) {
+    }
+    else
+    {
+      if ($different_dates)
+      {
         $date_format = ($twentyfourhour_format) ? $strftime_format['datetime24'] : $strftime_format['datetime12'];
-      } else {
+      }
+      else
+      {
         $date_format = ($twentyfourhour_format) ? $strftime_format['time24'] : $strftime_format['time12'];
       }
       $timestr = utf8_strftime($date_format, $row['start_time']) . " - " .
                  utf8_strftime($date_format, $row['end_time']);
-      if (!$different_dates) {
+      if (!$different_dates)
+      {
         $timestr .= ", " . utf8_strftime($strftime_format['date'], $row['start_time']);
       }
     }
@@ -632,7 +643,7 @@ function mrbsCheckPolicy(array $booking, $ignore, $repignore, $delete=FALSE)
 }
 
 
-function get_entry_by_id($id)
+function get_entry_by_id(int $id) : ?array
 {
   if (!isset($id))
   {
@@ -853,7 +864,7 @@ function get_entries_n_outstanding(User $user)
  * have been deleted.
  *
  */
-function mrbsDelEntry($id, $series, $all)
+function mrbsDelEntry($id, $series, bool $all)
 {
   $start_times = array();
 
@@ -943,12 +954,12 @@ function mrbsDelEntry($id, $series, $all)
  */
 function mrbsCreateEntry($table, $data)
 {
-  global $standard_fields, $db_tbl_prefix;
+  global $standard_fields;
 
   $sql_col = array();
   $sql_val = array();
-  $table_no_prefix = utf8_substr($table, utf8_strlen($db_tbl_prefix));  // strip the prefix off the table name
 
+  $table_short_name = get_table_short_name($table);
   $fields = db()->field_info($table);
 
   $sql_params = array();
@@ -1051,7 +1062,7 @@ function mrbsCreateEntry($table, $data)
 
         default:
           // custom fields
-          if (!in_array($key, $standard_fields[$table_no_prefix]))
+          if (!in_array($key, $standard_fields[$table_short_name]))
           {
             $sql_col[] = $key;
 
@@ -1634,6 +1645,17 @@ function series_has_registrants($repeat_id)
 }
 
 
+// Determines whether any entries allow registration
+function registration_somewhere() : bool
+{
+  $sql = "SELECT COUNT(*)
+            FROM " . _tbl('entry') . "
+           WHERE allow_registration=1
+           LIMIT 1";
+  return (db()->query1($sql) > 0);
+}
+
+
 // get_booking_info($id, $series)
 //
 // Gets all the details for a booking with $id, which is in the
@@ -1774,6 +1796,8 @@ function get_booking_info($id, $series, $silent=FALSE)
   }
 
 
+  // Turn the last_updated column into an int (PostgreSQL will return a float)
+  $row['last_updated'] = intval($row['last_updated']);
 
   // Now get the duration.
   // Don't translate the units at this stage.   We'll translate them later.
@@ -2271,7 +2295,7 @@ function update_participants($old_id, $new_id)
 function mrbsMakeBookings(array $bookings, $id=NULL, $just_check=FALSE, $skip=FALSE, $original_room_id=NULL, $send_mail=FALSE, $edit_type='')
 {
   global $max_rep_entrys, $enable_periods, $resolution, $mail_settings;
-  global $prevent_simultaneous_bookings;
+  global $prevent_simultaneous_bookings, $auth;
 
   // All the data, except for the status and room id, will be common
   // across the bookings
@@ -2336,13 +2360,14 @@ function mrbsMakeBookings(array $bookings, $id=NULL, $just_check=FALSE, $skip=FA
   $skip_lists = array();    // Holds a 2D array of bookings to skip past.  Indexed
                             // by room id and start time
 
-  // Do the simple check for simultaneous bookings: if there is more than one booking
-  // then this is going to result in a simultaneous booking.  The only question is whether
-  // this a notice or an error.  If the user is an ordinary user in more than one of
-  // the rooms, then it's an error, otherwise a notice.
+  // Do the simple check for simultaneous bookings and or selection of multiple rooms: if
+  // there is more than one booking then this is going to result in a simultaneous booking.
+  // The only question is whether this a notice or an error.  If the user is an ordinary user
+  // in more than one of the rooms, then it's an error, otherwise a notice.
   // The policy check later on will check whether the booking is at the same time as
   // any other bookings made by this user.
-  if ($prevent_simultaneous_bookings && (count($bookings) > 1))
+  if (($prevent_simultaneous_bookings || $auth['only_admin_can_select_multiroom'])
+      && (count($bookings) > 1))
   {
     $violation_status = 'notices';
     $non_admin_rooms = 0;
@@ -2359,7 +2384,14 @@ function mrbsMakeBookings(array $bookings, $id=NULL, $just_check=FALSE, $skip=FA
         }
       }
     }
-    $violations[$violation_status][] = get_vocab('no_simultaneous_bookings');
+    if ($prevent_simultaneous_bookings)
+    {
+      $violations[$violation_status][] = get_vocab('no_simultaneous_bookings');
+    }
+    if ($auth['only_admin_can_select_multiroom'])
+    {
+      $violations[$violation_status][] = get_vocab('multiroom_not_allowed');
+    }
   }
 
   // Check for any schedule conflicts in each room we're going to try and
@@ -2478,7 +2510,11 @@ function mrbsMakeBookings(array $bookings, $id=NULL, $just_check=FALSE, $skip=FA
     else
     {
       $old_bookings = array();
-      $old_bookings[] = get_entry_by_id($id);
+      $old_booking = get_entry_by_id($id);
+      if (isset($old_booking))
+      {
+        $old_bookings[] = $old_booking;
+      }
     }
 
     foreach ($old_bookings as $old_booking)
@@ -2659,18 +2695,25 @@ function mrbsMakeBookings(array $bookings, $id=NULL, $just_check=FALSE, $skip=FA
 }
 
 
-function get_bookings_in_series($repeat_id)
+function get_bookings_in_series(?int $repeat_id) : array
 {
   $bookings = array();
 
-  $sql = "SELECT id
+  if (isset($repeat_id))
+  {
+    $sql = "SELECT id
            FROM " . _tbl('entry') . "
           WHERE repeat_id = ?";
-  $res = db()->query_array($sql, array($repeat_id));
+    $res = db()->query_array($sql, array($repeat_id));
 
-  foreach ($res as $id)
-  {
-    $bookings[] = get_entry_by_id($id);
+    foreach ($res as $id)
+    {
+      $booking = get_entry_by_id($id);
+      if (isset($booking))
+      {
+        $bookings[] = $booking;
+      }
+    }
   }
 
   return $bookings;

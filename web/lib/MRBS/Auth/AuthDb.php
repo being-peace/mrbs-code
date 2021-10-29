@@ -32,7 +32,7 @@ class AuthDb extends Auth
    *   false    - The pair are invalid or do not exist
    *   string   - The validated username
    */
-  public function validateUser($user, $pass)
+  public function validateUser(?string $user, ?string $pass)
   {
     // The string $user that the user logged on with could be either a username or
     // an email address, or even possibly just the local part of an email address.
@@ -79,7 +79,7 @@ class AuthDb extends Auth
    *   false    - The pair are invalid or do not exist
    *   string   - The validated username
    */
-  private function validateUsername($user, $pass)
+  private function validateUsername(string $user, string $pass)
   {
     $sql_params = array();
 
@@ -118,7 +118,7 @@ class AuthDb extends Auth
    * Returns:
    *   array    - An array of valid usernames, empty if none found
    */
-  private function validateEmail($email, $pass)
+  private function validateEmail(string $email, string $pass) : array
   {
     $valid_usernames = array();
 
@@ -128,7 +128,8 @@ class AuthDb extends Auth
     // Check all the users that have this email address and password hash.
     foreach($users as $user)
     {
-      if ($this->checkPassword($pass, $user['password_hash'], 'email', $email))
+      if (isset($user['password_hash']) &&
+          $this->checkPassword($pass, $user['password_hash'], 'email', $email))
       {
         $valid_usernames[] = $user['name'];
       }
@@ -138,7 +139,7 @@ class AuthDb extends Auth
   }
 
 
-  public function getUser($username)
+  public function getUser(string $username) : ?User
   {
     $row = $this->getUserByUsername($username);
 
@@ -167,7 +168,7 @@ class AuthDb extends Auth
 
 
   // Return an array of users, indexed by 'username' and 'display_name'
-  public function getUsernames()
+  public function getUsernames() : array
   {
     $sql = "SELECT name AS username, display_name AS display_name
               FROM " . _tbl('users') . "
@@ -175,12 +176,15 @@ class AuthDb extends Auth
 
     $res = db()->query($sql);
 
-    return $res->all_rows_keyed();
+    $users =  $res->all_rows_keyed();
+    self::sortUsers($users);
+
+    return $users;
   }
 
 
   // Return an array of all users
-  public function getUsers()
+  public function getUsers() : array
   {
     $sql = "SELECT *
               FROM " . _tbl('users') . "
@@ -193,14 +197,14 @@ class AuthDb extends Auth
 
 
   // Checks whether validation of a user by email address is possible and allowed.
-  public function canValidateByEmail()
+  public function canValidateByEmail() : bool
   {
     return true;
   }
 
 
   // Checks whether the method has a password reset facility
-  public function canResetPassword()
+  public function canResetPassword() : bool
   {
     return true;
   }
@@ -209,13 +213,13 @@ class AuthDb extends Auth
   // Checks whether the password by reset by supplying an email address.
   // We allow resetting by email, even if there are multiple users with the
   // same email address.
-  public function canResetByEmail()
+  public function canResetByEmail() : bool
   {
     return $this->canValidateByEmail();
   }
 
 
-  public function requestPassword($login)
+  public function requestPassword(?string $login) : bool
   {
     if (!isset($login) || ($login === ''))
     {
@@ -270,7 +274,7 @@ class AuthDb extends Auth
   }
 
 
-  public function resetPassword($username, $key, $password)
+  public function resetPassword(?string $username, ?string $key, ?string $password) : bool
   {
     // Check that we've got a password and we're allowed to reset the password
     if (!isset($password) || !auth()->isValidReset($username, $key))
@@ -296,7 +300,7 @@ class AuthDb extends Auth
   }
 
 
-  public function isValidReset($user, $key)
+  public function isValidReset(?string $user, ?string $key) : bool
   {
     if (!isset($user) || !isset($key) || ($user === '') || ($key === ''))
     {
@@ -330,7 +334,30 @@ class AuthDb extends Auth
   }
 
 
-  private function notifyUser(array $users, $key)
+  protected function getRegistrantsDisplayNamesUnsorted(int $id) : array
+  {
+    // For the 'db' auth type we can improve performance by doing a single query
+    // on the participants table joined with the users table.  (Actually it's two
+    // queries in a UNION: one getting the rows where there isn't an entry in the
+    // users table and another the rows where there is.)
+    $sql = "SELECT P.username as display_name
+              FROM " . _tbl('participants') . " P
+         LEFT JOIN " . _tbl('users') . " U
+                ON P.username=U.name
+             WHERE P.entry_id=:entry_id
+               AND U.name IS NULL
+             UNION
+            SELECT U.display_name
+              FROM " . _tbl('participants') . " P
+         LEFT JOIN " . _tbl('users') . " U
+                ON P.username=U.name
+             WHERE P.entry_id=:entry_id
+               AND U.name IS NOT NULL";
+
+    return db()->query_array($sql, array(':entry_id' => $id));
+  }
+
+  private function notifyUser(array $users, string $key) : bool
   {
     global $auth, $mail_settings;
 
@@ -383,8 +410,7 @@ class AuthDb extends Auth
         'key'       => $key
       );
     $query = http_build_query($vars, '', '&');
-    $href = (is_https()) ? 'https' : 'http';
-    $href .= '://' . url_base() . multisite("reset_password.php?$query");
+    $href = url_base() . multisite("reset_password.php?$query");
     $body .= "<p><a href=\"$href\">" . get_vocab('reset_password') . "</a>.</p>";
 
     MailQueue::add(
@@ -400,7 +426,7 @@ class AuthDb extends Auth
     return true;
   }
 
-  private function setResetKey(array $users, $key)
+  private function setResetKey(array $users, string $key) : bool
   {
     global $auth;
 
@@ -432,7 +458,7 @@ class AuthDb extends Auth
   }
 
 
-  private function getUserByUsername($username)
+  private function getUserByUsername(string $username) : ?array
   {
     $sql = "SELECT *
               FROM " . _tbl('users') . "
@@ -451,7 +477,7 @@ class AuthDb extends Auth
   }
 
 
-  private function getUserByUserId($id)
+  private function getUserByUserId(int $id) : ?array
   {
     $sql = "SELECT *
               FROM " . _tbl('users') . "
@@ -474,7 +500,7 @@ class AuthDb extends Auth
   // Assumes that email addresses are case insensitive.
   // Allows equivalent Gmail addresses, ie ignores dots in the local part and
   // treats gmail.com and googlemail.com as equivalent domains.
-  private function getUsersByEmail($email)
+  private function getUsersByEmail(string $email) : array
   {
     global $auth;
 
@@ -538,7 +564,7 @@ class AuthDb extends Auth
   }
 
 
-  private function rehash($password, $column_name, $column_value)
+  private function rehash(string $password, string $column_name, string $column_value) : void
   {
     $sql_params = array(password_hash($password, PASSWORD_DEFAULT));
 
@@ -574,7 +600,7 @@ class AuthDb extends Auth
   // where $column_name=$column_value.  Typically $column_name will be either
   // 'name' or 'email'.
   // Returns a boolean: true if they match, otherwise false.
-  private function checkPassword($password, $password_hash, $column_name, $column_value)
+  private function checkPassword(string $password, string $password_hash, string $column_name, string $column_value) : bool
   {
     $result = false;
     $do_rehash = false;

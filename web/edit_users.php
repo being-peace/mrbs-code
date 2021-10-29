@@ -60,6 +60,7 @@ $name_not_unique = get_form_var('name_not_unique', 'int');
 $taken_name = get_form_var('taken_name', 'string');
 $pwd_not_match = get_form_var('pwd_not_match', 'string');
 $pwd_invalid = get_form_var('pwd_invalid', 'string');
+$invalid_dates = get_form_var('invalid_dates', 'array');
 $datatable = get_form_var('datatable', 'int');  // Will only be set if we're using DataTables
 $back_button = get_form_var('back_button', 'string');
 $delete_button = get_form_var('delete_button', 'string');
@@ -216,7 +217,7 @@ function output_row($row)
         case 'timestamp':
           // Convert the SQL timestamp into a time value and back into a localised string and
           // put the UNIX timestamp in a span so that the JavaScript can sort it properly.
-          $unix_timestamp = strtotime($col_value);
+          $unix_timestamp = (isset($col_value)) ? strtotime($col_value) : 0;
           if (($unix_timestamp === false) || ($unix_timestamp < 0))
           {
             // To cater for timestamps before the start of the Unix Epoch
@@ -383,7 +384,7 @@ function get_field_email($params, $disabled=false)
 
 function get_field_custom($custom_field, $params, $disabled=false)
 {
-  global $select_options, $datalist_options, $is_mandatory_field;
+  global $select_options, $datalist_options, $is_mandatory_field, $pattern;
   global $text_input_max;
 
   // Output a checkbox if it's a boolean or integer <= 2 bytes (which we will
@@ -398,6 +399,10 @@ function get_field_custom($custom_field, $params, $disabled=false)
   elseif (($custom_field['nature'] == 'character') && isset($custom_field['length']) && ($custom_field['length'] > $text_input_max))
   {
     $class = 'FieldTextarea';
+  }
+  elseif ($custom_field['type'] == 'date')
+  {
+    $class = 'FieldInputDate';
   }
   elseif (!empty($select_options[$params['field']]))
   {
@@ -421,10 +426,26 @@ function get_field_custom($custom_field, $params, $disabled=false)
   {
     $field->setControlAttribute('required', true);
   }
+
   if ($disabled)
   {
     $field->setControlAttribute('disabled', true);
     $field->addHiddenInput($params['name'], $params['value']);
+  }
+
+  // Pattern attribute, if any
+  if (!empty($pattern[$params['field']]))
+  {
+    $field->setControlAttribute('pattern', $pattern[$params['field']]);
+    // And any custom error messages
+    $tag = $params['field'] . '.oninvalid';
+    $oninvalid_text = get_vocab($tag);
+    if (isset($oninvalid_text) && ($oninvalid_text !== $tag))
+    {
+      $field->setControlAttribute('oninvalid', "this.setCustomValidity('". escape_js($oninvalid_text) . "')");
+      // Need to clear the invalid message
+      $field->setControlAttribute('onchange', "this.setCustomValidity('')");
+    }
   }
 
   switch ($class)
@@ -436,6 +457,10 @@ function get_field_custom($custom_field, $params, $disabled=false)
     case 'FieldSelect':
       $options = $select_options[$params['field']];
       $field->addSelectOptions($options, $params['value']);
+      break;
+
+    case 'FieldInputDate':
+      $field->setControlAttribute('value', $params['value']);
       break;
 
     case 'FieldInputDatalist':
@@ -715,6 +740,13 @@ if (isset($action) && ( ($action == "edit") or ($action == "add") ))
   if (!empty($name_empty))
   {
     echo "<p class=\"error\">" . get_vocab('name_empty') . "<p>\n";
+  }
+  if (!empty($invalid_dates))
+  {
+    foreach ($invalid_dates as $field)
+    {
+      echo "<p class=\"error\">" . get_vocab('invalid_date', get_loc_field_name(_tbl('users'), $field)) . "<p>\n";
+    }
   }
 
   // Now do any password error messages
@@ -1037,6 +1069,30 @@ if (isset($action) && ($action == "update"))
     }
   }
 
+  // Now check some specific data types
+  foreach ($fields as $field)
+  {
+    // If this a Date type check that we've got a valid date format before
+    // we get an SQL error.  If the field is nullable and the string is empty
+    // we assume that the user is trying to nullify the value.
+    if ($field['type'] == 'date')
+    {
+      if (!validate_iso_date($values[$field['name']]))
+      {
+        if ($field['is_nullable'] && ($values[$field['name']] === ''))
+        {
+          $values[$field['name']] = null;
+        }
+        else
+        {
+          $valid_data = false;
+          $q_string .= "&invalid_dates[]=" . urlencode($field['name']);
+        }
+      }
+    }
+  }
+
+
   // if validation failed, go back to this page with the query
   // string, which by now has both the error codes and the original
   // form values
@@ -1073,8 +1129,9 @@ if (isset($action) && ($action == "update"))
 
     if ($fieldname != 'id')
     {
-      // pre-process the field value for SQL
       $value = $values[$fieldname];
+
+      // pre-process the field value for SQL
       switch ($field['nature'])
       {
         case 'integer':
@@ -1230,6 +1287,22 @@ if ($initial_user_creation != 1)   // don't print the user table if there are no
       'reset_key_hash',
       'reset_key_expiry'
     );
+
+  // Add in the private fields to the list of columns to be ignored
+  if (!is_user_admin())
+  {
+    foreach ($is_private_field as $fieldname => $is_private)
+    {
+      if ($is_private)
+      {
+        list($table, $column) = explode('.', $fieldname, 2);
+        if ($table == 'users')
+        {
+          $ignore_columns[] = $column;
+        }
+      }
+    }
+  }
 
   if (!$is_ajax)
   {

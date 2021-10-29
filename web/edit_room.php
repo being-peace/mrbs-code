@@ -53,7 +53,7 @@ require_once "mrbs_sql.inc";
 //
 // For example if you want to add a column specifying whether or not a room
 // has a coffee machine you could add a column to the room table called
-// 'coffee_machine' of type tinyint(1), in MySQL, or smallint in PostgreSQL.
+// 'coffee_machine' of type tinyint, in MySQL, or smallint in PostgreSQL.
 // Then in the config file you would add the line
 //
 // $vocab_override['en']['room.coffee_machine'] = "Coffee machine";  // or appropriate translation
@@ -304,9 +304,12 @@ $attributes = array('id'     => 'edit_room',
 $legend = (is_admin()) ? get_vocab('editroom') : get_vocab('viewroom');
 
 $form->setAttributes($attributes)
-     ->addHiddenInput('room', $data['id'])
-     ->addHiddenInput('old_area', $data['area_id'])
-     ->addHiddenInput('old_room_name', $data['room_name']);
+     ->addHiddenInputs(array(
+         'room' => $data['id'],
+         'area' => $data['area_id'],
+         'old_area' => $data['area_id'],
+         'old_room_name' => $data['room_name']
+       ));
 
 $outer_fieldset = new ElementFieldset();
 

@@ -3,6 +3,66 @@ namespace MRBS;
 
 use \IntlDateFormatter;
 
+
+// Prepares an entry for display by (a) adding in registration level information
+// and (b) replacing the text in private fields if necessary.
+function prepare_entry(array $entry) : array
+{
+  global $is_private_field, $show_registration_level, $auth;
+
+  // Add in the registration level details
+  if ($show_registration_level && $entry['allow_registration'])
+  {
+    // Check whether we should be showing the registrants' names
+    $show_names = ($auth['show_registrant_names_in_calendar'] && ($entry['n_registered'] > 0));
+    if ($show_names && !$auth['show_registrant_names_in_public_calendar'])
+    {
+      // If we're not allowed to show names in the public calendar, check that the user is logged in
+      // and has an access level of at least 1
+      $mrbs_user = session()->getCurrentUser();
+      $show_names = isset($mrbs_user) && ($mrbs_user->level > 0);
+    }
+    $names = ($show_names) ? implode(', ', auth()->getRegistrantsDisplayNames($entry)) : '';
+    if ($entry['registrant_limit_enabled'])
+    {
+      $tag = ($show_names) ? 'registration_level_limited_with_names' : 'registration_level_limited';
+      $entry['name'] .= get_vocab($tag, $entry['n_registered'], $entry['registrant_limit'], $names);
+    }
+    else
+    {
+      $tag = ($show_names) ? 'registration_level_unlimited_with_names' : 'registration_level_unlimited';
+      $entry['name'] .= get_vocab($tag, $entry['n_registered'], $names);
+    }
+  }
+
+  // Check whether the event is private
+  if (is_private_event($entry['private']) &&
+    !getWritable($entry['create_by'], $entry['room_id']))
+  {
+    $entry['private'] = true;
+
+    foreach (array('name', 'description') as $key)
+    {
+      if ($is_private_field["entry.$key"])
+      {
+        $entry[$key] = '[' . get_vocab('unavailable') . ']';
+      }
+    }
+
+    if (!empty($is_private_field['entry.type']))
+    {
+      $entry['type'] = 'private_type';
+    }
+  }
+  else
+  {
+    $entry['private'] = false;
+  }
+
+  return $entry;
+}
+
+
 function map_add_booking(array $entry, &$column, $start_first_slot, $start_last_slot) : void
 {
   // Enters the contents of the booking found in $entry into $column, which is
@@ -55,9 +115,7 @@ function map_add_booking(array $entry, &$column, $start_first_slot, $start_last_
   // or at the last slot in the day, whichever is earlier.
   // Time is of the format HHMM without leading zeros.
 
-
   global $resolution;
-  global $is_private_field;
 
   // We're only interested in entries which occur on this day (it's possible
   // for $entry to contain entries for other days)
@@ -67,29 +125,7 @@ function map_add_booking(array $entry, &$column, $start_first_slot, $start_last_
     return;
   }
 
-  // Check whether the event is private
-  if (is_private_event($entry['private']) &&
-      !getWritable($entry['create_by'], $entry['room_id']))
-  {
-    $entry['private'] = true;
-
-    foreach (array('name', 'description') as $key)
-    {
-      if ($is_private_field["entry.$key"])
-      {
-        $entry[$key] = '[' . get_vocab('unavailable') . ']';
-      }
-    }
-
-    if (!empty($is_private_field['entry.type']))
-    {
-      $entry['type'] = 'private_type';
-    }
-  }
-  else
-  {
-    $entry['private'] = false;
-  }
+  $entry = prepare_entry($entry);
 
   // Adjust the starting and ending times so that bookings which don't
   // start or end at a recognized time still appear.
@@ -507,7 +543,10 @@ function get_n_time_slots() : int
   {
     $end_last += SECONDS_PER_DAY;
   }
-  return ($end_last - $start_first)/$resolution;
+
+  // Force the result to be an int.  It normally will be, but might not be if, say,
+  // $force_resolution is set.
+  return intval(($end_last - $start_first)/$resolution);
 }
 
 
@@ -1664,7 +1703,6 @@ function month_room_table_innerhtml($view, $view_all, $year, $month, $day, $area
 {
   global $weekstarts, $view_week_number, $show_plus_link, $monthly_view_entries_details;
   global $enable_periods, $morningstarts, $morningstarts_minutes;
-  global $is_private_field;
 
   // Check that we've got a valid, enabled room
   if (is_null(get_room_name($room)) || !is_visible($room))
@@ -1793,24 +1831,7 @@ function month_room_table_innerhtml($view, $view_all, $year, $month, $day, $area
           continue;
         }
 
-        // Handle private events
-        if (is_private_event($entry['private']) &&
-            !getWritable($entry['create_by'], $room))
-        {
-          $entry['private'] = true;
-          if ($is_private_field['entry.name'])
-          {
-            $entry['name'] = "[".get_vocab('unavailable')."]";
-          }
-          if (!empty($is_private_field['entry.type']))
-          {
-            $entry['type'] = 'private_type';
-          }
-        }
-        else
-        {
-          $entry['private'] = false;
-        }
+        $entry = prepare_entry($entry);
 
         $classes = get_entry_classes($entry);
         $classes[] = $monthly_view_entries_details;

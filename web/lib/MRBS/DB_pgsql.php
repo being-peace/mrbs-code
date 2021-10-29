@@ -301,7 +301,9 @@ class DB_pgsql extends DB
   // Generate non-standard SQL to output a TIMESTAMP as a Unix-time:
   public function syntax_timestamp_to_unix($fieldname)
   {
-    return " DATE_PART('epoch', $fieldname) ";
+    // A PostgreSQL timestamp can be a float.  We need to round it
+    // to the nearest integer.
+    return " ROUND(DATE_PART('epoch', $fieldname)) ";
   }
 
 
@@ -372,6 +374,19 @@ class DB_pgsql extends DB
 
     $params[] = $delimiter;
     return "SPLIT_PART($fieldname, ?, $count)";
+  }
+
+
+  // Returns the syntax for aggregating a number of rows as a delimited string
+  public function syntax_group_array_as_string($fieldname, $delimiter=',')
+  {
+    // array_agg introduced in PostgreSQL version 8.4
+    //
+    // Use DISTINCT to eliminate duplicates which can arise when the query
+    // has joins on two or more junction tables.  Maybe a different query
+    // would eliminate the duplicates and the need for DISTINCT, and it may
+    // or may not be more efficient.
+    return "array_to_string(array_agg(DISTINCT $fieldname), '$delimiter')";
   }
 
 }

@@ -48,6 +48,10 @@ $vocab["create_new_booking"] = "Create a new booking";
 $vocab["select_area"]        = "Select area";
 $vocab["select_room"]        = "Select room";
 $vocab["all"]                = "<all>";
+$vocab["registration_level_limited"]              = ' [%1$d/%2$d]';
+$vocab["registration_level_limited_with_names"]   = ' [%1$d/%2$d: %3$s]';
+$vocab["registration_level_unlimited"]            = ' [%1$d]';
+$vocab["registration_level_unlimited_with_names"] = ' [%1$d: %2$s]';
 
 // Used in trailer.inc
 $vocab["viewday"]            = "View Day";
@@ -139,6 +143,7 @@ $vocab["invalid_rep_interval"]     = "The repeat interval must be greater than z
 $vocab["confirm_rep_end_date"]     = "It looks like you may have forgotten to set the repeat " .
                                      "end date. Do you want to continue anyway?";
 $vocab["type_reserved_for_admins"] = "The type '%s' is reserved for administrators";
+$vocab["multiroom_not_allowed"]    = "You are not allowed to make a booking for multiple rooms.";
 $vocab["edit_entry_nonexistent_room"] = "You are trying to create or edit an entry for a room " .
                                         "that doesn't exist.  This might be because you are using " .
                                         "a bookmark that is no longer valid. It is not generally " .
@@ -159,6 +164,7 @@ $vocab["deleteseries"]            = "Delete Series";
 $vocab["exportentry"]             = "Export Entry";
 $vocab["exportseries"]            = "Export Series";
 $vocab["confirmdel"]              = "Are you sure you want to delete this entry?";
+$vocab["confirmdel_series"]       = "Are you sure you want to delete this series?";
 $vocab["confirm_edit_series"]     = "Users have registered for one or more events in this series and " .
                                     "editing the series will cause their names to be lost.  Are you sure " .
                                     "you want to continue?";
@@ -300,7 +306,8 @@ $vocab["enter_username_or_email"]   = "Please enter your username or email addre
 $vocab["will_be_sent_instructions"] = "You will be sent an email message with instructions on how to reset your password.";
 $vocab["reset_password"]            = "Reset password";
 $vocab["pwd_check_email"]           = "Thank you.  If there's a user account corresponding to those details then you " .
-                                      "will shortly receive an email with instructions for resetting your password.";
+                                      "will shortly receive an email with instructions for resetting your password. " .
+                                      "Don't forget to check your spam/junk folder if it doesn't arrive.";
 $vocab["invalid_link"]              = "Invalid link";
 $vocab["pwd_request_failed"]        = "An email could not be sent to this user.";
 $vocab["link_invalid"]              = "The password reset link is invalid or has expired.";
@@ -415,6 +422,8 @@ $vocab["delete_entries_warning"] = "WARNING!  This will delete all the entries m
                                    "you sure you want to continue?\n\n" .
                                    "Total number of entries that will be deleted: ";
 $vocab["delete_entries_failed"] = "The entries could not be deleted.";
+$vocab["registered"]            = "Registered";
+$vocab["na"]                    = "[N/A]";
 
 // Used in admin.php
 $vocab["edit"]               = "Edit";
@@ -526,6 +535,7 @@ $vocab["invalid_types_note"]      = "These are types that are not allowed to be 
 // Used in edit_users.php
 $vocab["name_empty"]          = "You must enter a name.";
 $vocab["name_not_unique"]     = "already exists.   Please choose another name.";
+$vocab["invalid_date"]        = "The field '%s' must contain a valid date in the format YYYY-MM-DD.";
 $vocab["confirm_delete_user"] = "Are you sure you want to delete this user?";
 
 // Used in del.php

@@ -2,11 +2,28 @@
 namespace MRBS\Auth;
 
 use \MRBS\User;
+use function MRBS\get_registrants;
+use function MRBS\get_sortable_name;
+use function MRBS\strcasecmp_locale;
 
 
 abstract class Auth
 {
-  public function getUser($username)
+  /* validateUser($user, $pass)
+   *
+   * Checks if the specified username/password pair are valid
+   *
+   * $user  - The user name
+   * $pass  - The password
+   *
+   * Returns:
+   *   false    - The pair are invalid or do not exist
+   *   string   - The validated username
+   */
+  abstract public function validateUser(?string $user, ?string $pass);
+
+
+  public function getUser(string $username) : ?User
   {
     $user = new User($username);
     $user->display_name = $username;
@@ -18,21 +35,21 @@ abstract class Auth
 
 
   // Checks whether validation of a user by email address is possible and allowed.
-  public function canValidateByEmail()
+  public function canValidateByEmail() : bool
   {
     return false;
   }
 
 
   // Checks whether the method has a password reset facility
-  public function canResetPassword()
+  public function canResetPassword() : bool
   {
     return false;
   }
 
 
   // Checks whether the password by reset by supplying an email address
-  public function canResetByEmail()
+  public function canResetByEmail() : bool
   {
     return false;
   }
@@ -43,7 +60,7 @@ abstract class Auth
   // validation, but unfortunately JavaScript's native support for Unicode
   // pattern matching is very limited.   Would need to be implemented using
   // an add-in library).
-  public function validatePassword($password)
+  public function validatePassword(string $password) : bool
   {
     global $pwd_policy;
 
@@ -86,8 +103,41 @@ abstract class Auth
   }
 
 
+  // Returns an array of registrants' display names
+  public function getRegistrantsDisplayNames (array $entry) : array
+  {
+    $display_names = array();
+
+    // Only bother getting the names if we don't already know how many there are,
+    // or if we know there are definitely some
+    if (!isset($entry['n_registered']) || ($entry['n_registered'] > 0))
+    {
+      $display_names = $this->getRegistrantsDisplayNamesUnsorted($entry['id']);
+      usort($display_names, 'MRBS\compare_display_names');
+    }
+
+    return $display_names;
+  }
+
+
+  protected function getRegistrantsDisplayNamesUnsorted(int $id) : array
+  {
+    $display_names = array();
+    $registrants = get_registrants($id, false);
+
+    foreach ($registrants as $registrant)
+    {
+      $registrant_user = $this->getUser($registrant['username']);
+      $display_name = (isset($registrant_user)) ? $registrant_user->display_name : $registrant['username'];
+      $display_names[] = $display_name;
+    }
+
+    return $display_names;
+  }
+
+
   // Gets the level from the $auth['admin'] array in the config file
-  protected function getDefaultLevel($username)
+  protected function getDefaultLevel(?string $username) : int
   {
     global $auth;
 
@@ -115,7 +165,7 @@ abstract class Auth
 
 
   // Gets the default email address using config file settings
-  protected function getDefaultEmail($username)
+  protected function getDefaultEmail(?string $username) : string
   {
     global $mail_settings;
 
@@ -150,19 +200,28 @@ abstract class Auth
   }
 
 
+  // Callback function for comparing two users, indexed by 'username' and 'display_name'.
+  // Compares first by 'display_name' and then by 'username'
+  private static function compareUsers(array $user1, array $user2) : int
+  {
+    $display_name1 = get_sortable_name($user1['display_name']);
+    $display_name2 = get_sortable_name($user2['display_name']);
+    $display_name_comparison = strcasecmp_locale($display_name1, $display_name2);
+
+    if ($display_name_comparison === 0)
+    {
+      return strcasecmp_locale($user1['username'], $user2['username']);
+    }
+
+    return $display_name_comparison;
+  }
+
+
   // Sorts an array of users indexed by 'username' and 'display_name', eg the
   // output of getUsernames().   Sorts by display_name then username.
-  protected static function sortUsers(array &$users)
+  protected static function sortUsers(array &$users) : void
   {
-    // Obtain a list of columns
-    $username     = array_column($users, 'username');
-    $display_name = array_column($users, 'display_name');
-
-    // Sort the data with volume descending, edition ascending
-    // Add $data as the last parameter, to sort by the common key
-    array_multisort($display_name, SORT_ASC, SORT_LOCALE_STRING | SORT_FLAG_CASE,
-                    $username, SORT_ASC, SORT_LOCALE_STRING | SORT_FLAG_CASE,
-                    $users);
+    usort($users, [__CLASS__, 'compareUsers']);
   }
 
 

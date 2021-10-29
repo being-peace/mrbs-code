@@ -500,16 +500,18 @@ function get_field_rooms($value, $disabled=false)
 
 function get_field_type($value, $disabled=false)
 {
-  global $booking_types, $is_mandatory_field;
-
-  // Don't bother with types if there's only one of them (or even none)
-  if (!isset($booking_types) || (count($booking_types) < 2))
-  {
-    return null;
-  }
+  global $is_mandatory_field;
 
   // Get the options
   $options = get_type_options(is_book_admin());
+
+  // Don't bother with types if there's only one of them (or even none)
+  // for the current user.
+  if (count($options) < 2)
+  {
+    return null;
+  }
+  
   // If it's a mandatory field add a blank option to force a selection
   if (!empty($is_mandatory_field['entry.type']))
   {
@@ -1137,6 +1139,8 @@ $end_seconds = get_form_var('end_seconds', 'int');
 $selected_rooms = get_form_var('rooms', 'array');
 $start_date = get_form_var('start_date', 'string');
 $end_date = get_form_var('end_date', 'string');
+// And this comes from edit_entry_handler.php
+$back_button = get_form_var('back_button', 'string');
 
 
 // Check the CSRF token.
@@ -1705,6 +1709,12 @@ $form->setAttributes(array('class'  => 'standard js_hidden',
                            'id'     => 'main',
                            'action' => multisite('edit_entry_handler.php'),
                            'method' => 'post'));
+
+if (!empty($back_button))
+{
+  // Add a data attribute so that the JavaScript can tell where we've come from
+  $form->setAttribute('data-back', 1);
+}
 
 $hidden_inputs = array('returl'    => $returl,
                        'rep_id'    => $rep_id,

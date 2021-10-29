@@ -5,6 +5,7 @@ namespace MRBS;
 // isn't always installed).
 
 use IntlDateFormatter;
+use PHPMailer\PHPMailer\PHPMailer;
 
 require_once "functions.inc";
 
@@ -165,7 +166,9 @@ if (!empty($override_locale))
 // trying to find a locale that is available on the server and has a translation available
 // in MRBS and has localisations available in all the third party libraries.
 
-language_debug('HTTP_ACCEPT_LANGUAGE: ' . $server['HTTP_ACCEPT_LANGUAGE']);
+$http_accept_language = $server['HTTP_ACCEPT_LANGUAGE'] ?? '';
+language_debug("HTTP_ACCEPT_LANGUAGE: $http_accept_language");
+
 // Translate languages in the header string to their aliases
 if (isset($server['HTTP_ACCEPT_LANGUAGE']))
 {
@@ -304,6 +307,7 @@ function get_mrbs_locale($header=null)
 
     // Convert it to BCP 47 format (eg convert 'en_US' to 'en-US')
     $locale = convert_to_BCP47($locale);
+    $have_locale = true;
   }
 
   return $locale;
@@ -404,7 +408,7 @@ function get_mrbs_lang($locale=null)
 
 // Returns a version of the Accept-Language request HTTP header with language
 // strings substituted for their aliases
-function alias_header($header, array $aliases)
+function alias_header(string $header, array $aliases) : string
 {
   if (!empty($aliases))
   {
@@ -428,7 +432,7 @@ function alias_header($header, array $aliases)
 // by language, given an Accept-Language header string.
 // If $translate_wildcard is set then the wildcard language identifier ('*') is
 // translated to a standard language - we use 'en'.
-function get_qualifiers($header, $translate_wildcard=false)
+function get_qualifiers(?string $header, bool $translate_wildcard=false) : array
 {
   $result = array();
 
@@ -484,7 +488,7 @@ function get_qualifiers($header, $translate_wildcard=false)
 // Returns a string of acceptable languages, sorted in decreasing order of preference
 // If $translate_wildcard is set then the wildcard language identifier ('*') is
 // translated to a standard language - we use 'en'.
-function get_browser_langs($header, $translate_wildcard=false)
+function get_browser_langs(?string $header, bool $translate_wildcard=false) : array
 {
   return array_keys(get_qualifiers($header, $translate_wildcard));
 }
@@ -734,7 +738,7 @@ function get_charset()
 
 function get_mail_charset()
 {
-  return 'utf-8';
+  return PHPMailer::CHARSET_UTF8;
 }
 
 
@@ -784,7 +788,7 @@ function get_bom($charset)
 // [Maybe in the future we should switch to using the MessageFormatter
 //  class as it is more powerful.   However the Intl extension isn't present
 //  in all PHP installations and so the class would have to be emulated]
-function get_vocab($tag)
+function get_vocab(string $tag) : string
 {
   global $vocab;
 
@@ -802,7 +806,7 @@ function get_vocab($tag)
 
 
 // Same as get_vocab(), but uses the mailing language
-function get_mail_vocab($tag)
+function get_mail_vocab(string $tag) : string
 {
   global $vocab, $mail_settings;
 
@@ -831,7 +835,7 @@ function get_mail_vocab($tag)
 
 
 // Get localised booking type name
-function get_type_vocab($type)
+function get_type_vocab(string $type) : string
 {
   return get_vocab("type.$type");
 }
@@ -841,25 +845,13 @@ function get_type_vocab($type)
 // Looks for a tag of the format tablename.columnname (where tablename is
 // stripped of the table prefix) and if can't find a string for that tag will
 // return the column name
-function get_loc_field_name($table, $name)
+function get_loc_field_name(string $table, string $name) : string
 {
   global $vocab;
 
-  // Get the qualified prefix
-  $full_prefix = _tbl('');
-  // Strip the prefix, if any, off the table name
-  if (utf8_strpos($table, $full_prefix) === 0)
-  {
-    $tag = utf8_substr($table, utf8_strlen($full_prefix));
-  }
-  else
-  {
-    $tag = $table;
-  }
-  // Add on the field name
-  $tag .= "." . $name;
+  $tag = get_table_short_name($table) . ".$name";
 
-  // Then if there's a string in the vocab array for $tag use that,
+  // If there's a string in the vocab array for $tag use that,
   // otherwise just use the fieldname
   return (isset($vocab[$tag])) ? get_vocab($tag) : $name;
 }
