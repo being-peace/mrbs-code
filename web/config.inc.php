@@ -2,6 +2,7 @@
 namespace MRBS;
 
 // Layout
+$theme = "modern";
 $mrbs_company = "Hecken-mobil-E";
 $vocab_override['en']['mrbs'] = "";
 $vocab_override['de']['mrbs'] = "";

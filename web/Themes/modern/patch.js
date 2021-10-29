@@ -134,8 +134,6 @@ function patchFormElement(formElement, depth = 0) {
 
     if (formElement.id === "create_by")
         formElement.parentElement.className = "none"
-    else if (formElement.id === "name")
-        formElement.setAttribute("value", mrbs_user.displayName)
 
     if (depth > 0) {
         if (formElement.type === "checkbox")
@@ -298,7 +296,10 @@ function patchEditEntry() {
 
     var form = document.getElementById("main")
     form.parentElement.className = "container"
-    form.className = ""
+
+    var nameField = document.getElementById("name")
+    if (nameField.getAttribute("value") == "")
+        nameField.setAttribute("value", mrbs_user.displayName)
 
     // remove back button
     document.getElementsByName("back_button")[0].outerHTML = ""
@@ -335,16 +336,19 @@ function patchViewEntry() {
 
     // add icons to buttons
     var count = 0;
-    patchElements(document.getElementsByTagName("form"), form => {
+    var viewEntryNav = document.getElementById("view_entry_nav")
+    patchElements(viewEntryNav.getElementsByTagName("form"), form => {
         var innerIcon = ""
         var className = ""
+        count++;
+        console.log(form, count)
         var patchParents = false
-        if (form.getAttribute("action").startsWith("edit_entry.php") && count <= 2) {
+        if (form.getAttribute("action").startsWith("edit_entry.php") && count < 3) {
             className = "btn btn-outline-secondary mr-2 mb-2"
             innerIcon = "edit"
             patchParents = true
         }
-        else if (form.getAttribute("action").startsWith("edit_entry.php") && count >= 2) {
+        else if (form.getAttribute("action").startsWith("edit_entry.php") && count >= 3) {
             className = "btn btn-outline-secondary mr-2 mb-2"
             innerIcon = "copy"
             patchParents = true
@@ -371,8 +375,6 @@ function patchViewEntry() {
             form.parentElement.parentElement.className = "row"
         }
 
-        count++;
-
         patchChildsByTagName(form, "input", formInput => {
             if (formInput.type === "submit") {
                 formInput.className = className
@@ -396,7 +398,7 @@ function patchViewEntry() {
     // delete export buttons
     patchElements(document.getElementsByName("action"), element => {
         if (element.value === "export") {
-            element.parentElement.parentElement.parentElement.outerHTML = ""
+            element.parentElement.parentElement.outerHTML = ""
         }
     })
 }
