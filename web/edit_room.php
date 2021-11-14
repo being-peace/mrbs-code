@@ -253,12 +253,12 @@ function get_fieldset_general($data)
   $field = new FieldInputSubmit();
 
   $back = new ElementInputSubmit();
-  $back->setAttributes(array('value'      => get_vocab('backadmin'),
+  $back->setAttributes(array('value'      => get_vocab('back'),
                              'formaction' => multisite('admin.php')));
   $field->setAttribute('class', 'buttons')
         ->addLabelClass('no_suffix')
         ->addLabelElement($back)
-        ->setControlAttribute('value', get_vocab('change'));
+        ->setControlAttribute('value', get_vocab('save'));
   if (!is_admin())
   {
     $field->removeControl();
