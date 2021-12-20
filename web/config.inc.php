@@ -2,7 +2,7 @@
 namespace MRBS;
 
 // Layout
-$theme = "modern";
+// $theme = "modern";
 $mrbs_company = "Hecken-mobil-E";
 $vocab_override['en']['mrbs'] = "";
 $vocab_override['de']['mrbs'] = "";
@@ -13,9 +13,12 @@ $allow_cli = true;
 $locale = "de-de";
 $cli_language = "de";
 $default_language_tokens = "de";
+$mail_settings['admin_lang'] = 'de';
 $weekstarts = 1;
 $enable_registration=false;
 $auth['only_admin_can_select_multiroom'] = true;
+$auth['allow_custom_html'] = true;
+// $default_name = "Fahrziel";
 
 $custom_css_url = 'local/custom.css';
 
@@ -23,6 +26,7 @@ $vocab_override['de']["no_rooms_for_area"]  = "Der Bereich enthält keine Ressou
 $vocab_override['de']["select_room"]        = "Ressource auswählen";
 $vocab_override['de']["ctrl_click"]         = "Strg-Taste plus Mausklick um mehr als eine Ressource auszuwählen";
 $vocab_override['de']["edit_entry_nonexistent_room"] = "Sie versuchen einen Eintrag für eine Ressource zu erstellen, welcher " .
+$vocab_override['de']["namebooker"]         = "Fahrtziel";
 $vocab_override['de']["room"]               = "Ressource";
 $vocab_override['de']["no_rooms_selected"]    = "Sie müssen eine Ressource wählen.";
 $vocab_override['de']["match_room"]         = "Suche Ressource";
@@ -55,6 +59,8 @@ $vocab_override['de']["room_does_not_exist"]       = "Ressource existiert nicht:
 $vocab_override['de']["creating_new_room"]         = "Ressource wird angelegt:";
 $vocab_override['de']["could_not_create_room"]     = "Ressource konnte nicht angelegt werden";
 $vocab_override['de']["could_not_find_room"]       = "Ressource wurde nicht gefunden";
+
+$mail_settings['from'] = 'admin@heckenrose.info';
 
 
 $timezone = "Europe/Paris";
