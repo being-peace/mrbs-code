@@ -431,7 +431,7 @@ function process_event(array $vevent)
   if (!isset($booking['create_by']))
   {
     $mrbs_user = session()->getCurrentUser();
-    $mrbs_username = (isset($mrbs_user)) ? $mrbs_user->username : null;
+    $mrbs_username = (isset($mrbs_user)) ? $mrbs_user->username : '';
     $booking['create_by'] = $mrbs_username;
   }
 
@@ -848,7 +848,7 @@ function get_fieldset_ignore_location_settings() : ElementFieldset
 
 function get_fieldset_location_settings() : ElementFieldset
 {
-  global $default_room;
+  global $import_default_room;
   global $ignore_location;
 
   $fieldset = new ElementFieldset();
@@ -881,7 +881,7 @@ function get_fieldset_location_settings() : ElementFieldset
       $field->setLabel(get_vocab('default_room'))
             ->setLabelAttribute('title', get_vocab('default_room_note'))
             ->setControlAttribute('name', 'import_default_room')
-            ->addSelectOptions($options, $default_room, true);
+            ->addSelectOptions($options, $import_default_room, true);
 
       $fieldset->addElement($field);
     }
@@ -907,7 +907,7 @@ function get_fieldset_location_settings() : ElementFieldset
 function get_fieldset_other_settings() : ElementFieldset
 {
   global $booking_types;
-  global $import_default_type, $import_past, $skip;
+  global $import_default_type, $import_past, $delete_room_bookings, $skip;
 
   $fieldset = new ElementFieldset();
 
@@ -1006,8 +1006,7 @@ $area_room_parsing = get_form_var('area_room_parsing', 'string', '0');
 $import_default_type = get_form_var('import_default_type', 'string', $default_type);
 $import_past = get_form_var('import_past', 'string', ((empty($default_import_past)) ? '0' : '1'));
 $skip = get_form_var('skip', 'string', ((empty($skip_default)) ? '0' : '1'));
-$delete_room_bookings = get_form_var('delete_room_bookings', 'string', '0');
-$import_past = get_form_var('import_past', 'string', '0');
+$delete_room_bookings = get_form_var('delete_room_bookings', 'string', ((empty($delete_room_bookings)) ? '0' : '1'));
 
 // Check the CSRF token if we're being asked to import data
 // 2b, hack
