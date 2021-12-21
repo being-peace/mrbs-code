@@ -4,6 +4,8 @@ namespace MRBS\Auth;
 use \MRBS\User;
 use function MRBS\get_registrants;
 use function MRBS\get_sortable_name;
+use function MRBS\get_vocab;
+use function MRBS\session;
 use function MRBS\strcasecmp_locale;
 
 
@@ -23,7 +25,7 @@ abstract class Auth
   abstract public function validateUser(?string $user, ?string $pass);
 
 
-  public function getUser(string $username) : ?User
+  protected function getUserFresh(string $username) : ?User
   {
     $user = new User($username);
     $user->display_name = $username;
@@ -31,6 +33,48 @@ abstract class Auth
     $user->email = $this->getDefaultEmail($username);
 
     return $user;
+  }
+
+
+  public function getUser(string $username) : ?User
+  {
+    // Cache results for performance as getting user details in
+    // most authentication types is expensive.
+    static $users = array();
+
+    // Use array_key_exists() rather than isset() in case the value is NULL
+    if (!array_key_exists($username, $users))
+    {
+      // Check to see if this is the current user.  If it is, then we
+      // can save ourselves a potentially expensive operation.
+      // But we can only do this if we are not being called by getCurrentUser(), which
+      // some session schemes do, as otherwise we'll end up with an infinite recursion.
+      // TODO: is there a better way of handling this??
+      $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
+      $backtrace_functions = array_column($backtrace, 'function');
+      if (!in_array('getCurrentUser', $backtrace_functions))
+      {
+        $mrbs_user = session()->getCurrentUser();
+      }
+
+      if (isset($mrbs_user) && ($mrbs_user->username === $username))
+      {
+        $user = $mrbs_user;
+      }
+      else
+      {
+        $user = $this->getUserFresh($username);
+        // Make sure we've got a sensible display name
+        if (isset($user) &&
+            (!isset($user->display_name) || ($user->display_name === '')))
+        {
+          $user->display_name = $user->username;
+        }
+      }
+      $users[$username] = $user;
+    }
+
+    return $users[$username];
   }
 
 
@@ -104,7 +148,7 @@ abstract class Auth
 
 
   // Returns an array of registrants' display names
-  public function getRegistrantsDisplayNames (array $entry) : array
+  public function getRegistrantsDisplayNames (array $entry, bool $with_registered_by=false) : array
   {
     $display_names = array();
 
@@ -112,7 +156,7 @@ abstract class Auth
     // or if we know there are definitely some
     if (!isset($entry['n_registered']) || ($entry['n_registered'] > 0))
     {
-      $display_names = $this->getRegistrantsDisplayNamesUnsorted($entry['id']);
+      $display_names = $this->getRegistrantsDisplayNamesUnsorted($entry['id'], $with_registered_by);
       usort($display_names, 'MRBS\compare_display_names');
     }
 
@@ -120,7 +164,7 @@ abstract class Auth
   }
 
 
-  protected function getRegistrantsDisplayNamesUnsorted(int $id) : array
+  protected function getRegistrantsDisplayNamesUnsorted(int $id, bool $with_registered_by) : array
   {
     $display_names = array();
     $registrants = get_registrants($id, false);
@@ -129,6 +173,14 @@ abstract class Auth
     {
       $registrant_user = $this->getUser($registrant['username']);
       $display_name = (isset($registrant_user)) ? $registrant_user->display_name : $registrant['username'];
+      // Add in the name of the person who registered this user, if required and if different.
+      if ($with_registered_by &&
+          isset($registrant['create_by']) &&
+          ($registrant['create_by'] !== $registrant['username']))
+      {
+        $registered_by = $this->getUser($registrant['create_by']);
+        $display_name = get_vocab("registrant_registered_by", $display_name, $registered_by->display_name);
+      }
       $display_names[] = $display_name;
     }
 

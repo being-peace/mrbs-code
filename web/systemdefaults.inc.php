@@ -526,6 +526,10 @@ $max_rep_entrys = 365 + 1;
 // Default report span in days:
 $default_report_days = 60;
 
+// Whether to include the name of the person who made the registration, if different, in
+// the list of registrants in reports
+$include_registered_by = true;
+
 $show_plus_link = false;   // Change to true to always show the (+) link as in
                            // MRBS 1.1.
 
@@ -1524,6 +1528,12 @@ $csv_bom = false;
 // of an iCalendar event.   Note that no escaping of the delimiter is provided so
 // it must not occur in room or area names.
 $default_area_room_delimiter = '/';
+
+// Set the default source type for imports.  Can be 'file' or 'url'
+$default_import_source = 'file';
+
+// Default setting for importing past events
+$default_import_past = true;
 
 
 /*************
