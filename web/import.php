@@ -836,13 +836,18 @@ $delete_room_bookings = get_form_var('delete_room_bookings', 'string', '0');
 $import_past = get_form_var('import_past', 'string', '0');
 
 // Check the CSRF token if we're being asked to import data
-if (!empty($import))
+// 2b, hack
+if (!empty($import) && $import!=$import_token)
 {
   Form::checkToken();
 }
 
 // Check the user is authorised for this page
-checkAuthorised(this_page());
+// 2b, hack
+if ($import!=$import_token)
+{
+  checkAuthorised(this_page());
+}
 
 $context = array(
   'view'      => $view,
