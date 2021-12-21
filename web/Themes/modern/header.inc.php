@@ -10,7 +10,7 @@ use MRBS\Form\ElementInputSubmit;
 
 function print_head($simple)
 {
-  global $refresh_rate, $mrbs_company_logo, $mrbs_company, $enable_pwa;
+  global $refresh_rate, $mrbs_company_logo, $mrbs_company, $enable_pwa, $auth;
 ?>
 
   <head>
@@ -67,12 +67,15 @@ function print_head($simple)
       var mrbs_user = {};
       <?php if (session()->getCurrentUser() !== null) : ?>
         mrbs_user.displayName = "<?= session()->getCurrentUser()->display_name ?>";
-        mrbs_user.isAdmin = " <?= is_admin() ? "true" : "false" ?>";
+        mrbs_user.isAdmin = <?= is_admin() ? "true" : "false" ?>;
       <?php endif; ?>
       var mrbs_company_logo = "<?= $mrbs_company_logo ?>";
       var mrbs_company = "<?= $mrbs_company ?>";
+      var auth = {};
+      auth["only_admins_can_book"] = <?= $auth['only_admin_can_book'] ? "true":"false" ?>;
       var vocab = {};
       vocab["mrbs"] = "<?= get_vocab("mrbs") ?>";
+
       
     </script>
 
@@ -147,7 +150,8 @@ function print_menu_items($context)
   <ul class="navbar-nav ml-auto" style="margin-left: auto !important;">
 
     <?php foreach ($menu_items as $token => $page) :
-      if (!is_admin() && in_array($token, $disable_menu_items_for_non_admins))
+      if (!is_admin() && !empty($disable_menu_items_for_non_admins) && 
+          in_array($token, $disable_menu_items_for_non_admins))
         continue;
 
       if (checkAuthorised($page, true)) : ?>
@@ -164,11 +168,40 @@ function print_menu_items($context)
   <!--//print_report_link(session()->getCurrentUser()); -->
   <?php
   print_outstanding($query);
+  print_edit_profile($context);
   if (!$context['omit_login']) {
     print_logonoff_button();
   }
   ?>
 <?php
+}
+
+function print_edit_profile($context) {
+  global $user_can_edit_profile;
+  $user = session()->getCurrentUser();
+  if($user_can_edit_profile && isset($user)) {
+    $form = new Form();
+
+    $form_id = 'header_user_profile';
+
+    $form->setAttributes(array(
+      'id'     => $form_id,
+      'method' => 'post',
+      'action' => multisite('edit_users.php')
+    ));
+
+    $element = new ElementInputSubmit();
+    $element->setAttribute('value', htmlspecialchars($user->display_name));
+    $form->addElement($element);
+    $hidden_inputs = array(
+      'phase'        => '2',
+      'id'          => $user->id,
+      'edit_button' => $user->username
+    );
+    $form->addHiddenInputs($hidden_inputs);
+
+    $form->render();
+  }
 }
 
 function print_goto_date($context)

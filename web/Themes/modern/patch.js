@@ -155,7 +155,7 @@ function inputToButton(inputElement, innerHTML, extraAttributes = "") {
 }
 
 function patchHeader() {
-    for (formId of ["header_goto_date", "header_search", "header_logonoff"]) {
+    for (formId of ["header_goto_date", "header_search", "header_logonoff", "header_user_profile"]) {
         var form = document.getElementById(formId)
         if (!form)
             continue
@@ -335,6 +335,7 @@ function patchViewEntry() {
     })
 
     // add icons to buttons
+    console.log("Adding icons to nav buttons")
     var count = 0;
     var viewEntryNav = document.getElementById("view_entry_nav")
     patchElements(viewEntryNav.getElementsByTagName("form"), form => {
@@ -383,17 +384,47 @@ function patchViewEntry() {
         })
     })
 
+    if(auth.only_admins_can_book && !mrbs_user.isAdmin) {
+        viewEntryNav.outerHTML = ""
+    }
+
     // make "You are registered for this event" and "This event is full" a nice banner
     var registrationContainer = document.getElementById("registration");
-    if(registrationContainer)
-    patchElements(registrationContainer.childNodes, child => {
-        if (child.nodeName === "P") {
-            child.outerHTML = `
-            <div class="alert alert-primary" role="alert">
-                ` + child.innerHTML + `
-            </div>`
-        }
-    })
+    if(registrationContainer) {
+        patchElements(registrationContainer.childNodes, child => {
+            if (child.nodeName === "P") {
+                child.outerHTML = `
+                <div class="alert alert-primary" role="alert">
+                    ` + child.innerHTML + `
+                </div>`
+            }
+        })
+        console.log("Adding icons to add and remove buttons")
+        patchElements(registrationContainer.getElementsByTagName("form"), form => {
+            var innerIcon = ""
+            var className = ""
+            console.log(form, count)
+        
+            if (form.getAttribute("action") === "registration_handler.php" && form.parentElement.id === "registration") {
+                className = "btn btn-outline-success mr-2 mb-2"
+                innerIcon = "plus-circle"
+            }
+            else if (form.getAttribute("action") === "registration_handler.php" && form.parentElement.id !== "registration") {
+                className = "btn btn-outline-danger mr-2 mb-2"
+                innerIcon = "trash"
+            }
+            else {
+                return
+            }
+    
+            patchChildsByTagName(form, "input", formInput => {
+                if (formInput.type === "submit") {
+                    formInput.className = className
+                    formInput.outerHTML = inputToButton(formInput, "<span class=\"mr-2\" data-feather=\"" + innerIcon + "\"></span>" + formInput.value)
+                }
+            })
+        })
+    }
 
     // delete export buttons
     patchElements(document.getElementsByName("action"), element => {
@@ -454,7 +485,7 @@ function patchAdministration() {
 
             patchChildsByTagName(row.cells[6], "button", input => {
                 input.src = ""
-                input.type = "button"
+                input.type = "submit"
                 input.className = "btn btn-outline-danger"
                 input.innerHTML = "<span class=\"mr-2\" data-feather=\"trash\"></span>" + input.title
             })
@@ -574,7 +605,10 @@ function patchEditUsers() {
     var editUsersForm = document.getElementById("form_edit_users")
     if(editUsersForm) {
         // remove back button
-        document.getElementsByName("back_button")[0].outerHTML = ""
+        backButtons = 
+        patchElements(document.getElementsByName("back_button"), backButton => {
+            backButton.outerHTML = ""
+        })
 
         console.log("Found edit user form!")
         editUsersForm.className = ""
@@ -582,7 +616,15 @@ function patchEditUsers() {
         patchForm(editUsersForm, true)
 
         var update_button = document.getElementById("update_button")
-        editUsersForm.innerHTML += "<input type=\"hidden\" name=\"update_button\" value=\"" + update_button.value + "\">"
+        update_button.outerHTML = inputToButton(update_button, update_button.value, "name=\"" + update_button.name + "\" value=\"" + update_button.value + "\"")
+        
+        patchElements(document.getElementsByName("delete_button"), deleteButton => {
+            deleteButton.outerHTML = inputToButton(
+                deleteButton, 
+                deleteButton.value, 
+                "name=\"" + deleteButton.name + "\" value=\"" + deleteButton.value + "\""
+                )
+        })
 
         patchElements(document.getElementsByClassName("error"), errorMessage => {
             errorMessage.className = "alert alert-danger"
@@ -599,6 +641,23 @@ function patchEditUsers() {
         if (table)
             table.className = "table table-bordered table-hover table-striped"
     }
+
+    var userListTable = document.getElementById("users_table")
+    if (userListTable) {
+        if(!mrbs_user.isAdmin) {
+            window.location.replace("/")
+        }
+        else {
+            patchElements(userListTable.getElementsByTagName("form"), form => {
+                patchElements(form.getElementsByTagName("input"), input => {
+                    console.log(input)
+                    if (input.type == "submit") {
+                        form.innerHTML += "<input type=\"hidden\" name=\"edit_button\" value=\"" + input.value + "\">"
+                    }
+                })
+            })
+        }
+    }
 }
 
 function patchResetPassword() {
@@ -608,6 +667,38 @@ function patchResetPassword() {
     var form = document.getElementById("lost_password")
     if(form)
         patchForm(form, true)
+}
+
+function patchDel() {
+    if(window.location.pathname !== "/del.php")
+        return
+
+    console.log("Adding icons to add and remove buttons")
+    container = document.getElementById("del_room_confirm")
+    patchElements(container.getElementsByTagName("form"), form => {
+        var innerIcon = ""
+        var className = ""
+        console.log(form)
+    
+        if (form.getAttribute("action") === "admin.php") {
+            className = "btn btn-outline-success mr-2 mb-2"
+            innerIcon = "x-circle"
+        }
+        else if (form.getAttribute("action") === "del.php") {
+            className = "btn btn-outline-danger mr-2 mb-2"
+            innerIcon = "trash"
+        }
+        else {
+            return
+        }
+
+        patchChildsByTagName(form, "input", formInput => {
+            if (formInput.type === "submit") {
+                formInput.className = className
+                formInput.outerHTML = inputToButton(formInput, "<span class=\"mr-2\" data-feather=\"" + innerIcon + "\"></span>" + formInput.value)
+            }
+        })
+    })
 }
 
 function patchSiteStructure() {
@@ -644,6 +735,7 @@ function patchSiteStructure() {
     patchHeader()
     patchEditUsers()
     patchResetPassword()
+    patchDel()
 
     var forms = document.getElementsByTagName('form')
 
@@ -653,11 +745,11 @@ function patchSiteStructure() {
             if (button.type === "submit") {
                 form.addEventListener("submit", () => {
                     button.outerHTML = `
-              <button type="submit" class="` + button.className + `" disabled>
-              ` + button.value + `
-              <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
-              </button>
-              `
+                    <button type="submit" class="` + button.className + `" disabled>
+                    ` + button.value + `
+                    <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+                    </button>
+                    `
                 })
             }
         }
@@ -665,10 +757,11 @@ function patchSiteStructure() {
         var formButtons = form.getElementsByTagName("button");
         for (const button of formButtons) {
             if (button.type === "submit") {
-                form.addEventListener("submit", () => {
-                    console.log(button)
+                form.addEventListener("submit", e => {
                     button.innerHTML += ' <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>'
-                    button.disabled = true
+                    
+                    if (!button.value)
+                        button.disabled = true
                 })
             }
         }

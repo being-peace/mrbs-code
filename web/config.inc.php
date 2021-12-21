@@ -2,7 +2,7 @@
 namespace MRBS;
 
 // Layout
-// $theme = "modern";
+$theme = "modern";
 $mrbs_company = "Hecken-mobil-E";
 $vocab_override['en']['mrbs'] = "";
 $vocab_override['de']['mrbs'] = "";
@@ -17,7 +17,7 @@ $mail_settings['admin_lang'] = 'de';
 $weekstarts = 1;
 $enable_registration=false;
 $auth['only_admin_can_select_multiroom'] = true;
-$auth['allow_custom_html'] = true;
+// $auth['allow_custom_html'] = true;
 // $default_name = "Fahrziel";
 
 $custom_css_url = 'local/custom.css';
