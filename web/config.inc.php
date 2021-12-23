@@ -3,6 +3,8 @@ namespace MRBS;
 
 // Layout
 $theme = "modern";
+$enable_pwa = True;
+$user_can_edit_profile = True;
 $mrbs_company = "Hecken-mobil-E";
 $vocab_override['en']['mrbs'] = "";
 $vocab_override['de']['mrbs'] = "";

@@ -40,7 +40,12 @@ function print_head($simple)
           $content = str_replace("@@description@@", "$mrbs_company " . get_vocab("mrbs"), $content);
           $content = str_replace("@@icon.src@@", $mrbs_company_logo, $content);
           $content = str_replace("@@name@@", "$mrbs_company " . get_vocab("mrbs"), $content);
-          $content = str_replace("@@short_name@@", get_vocab("mrbs"), $content);
+          if(get_vocab("mrbs") != "") {
+            $content = str_replace("@@short_name@@", get_vocab("mrbs"), $content);
+          }
+          else {
+            $content = str_replace("@@short_name@@", $mrbs_company, $content);
+          }
           file_put_contents($targetFile, $content);
         }
       }
@@ -150,8 +155,7 @@ function print_menu_items($context)
   <ul class="navbar-nav ml-auto" style="margin-left: auto !important;">
 
     <?php foreach ($menu_items as $token => $page) :
-      if (!is_admin() && !empty($disable_menu_items_for_non_admins) && 
-          in_array($token, $disable_menu_items_for_non_admins))
+      if (!is_admin() && !empty($disable_menu_items_for_non_admins) && in_array($token, $disable_menu_items_for_non_admins))
         continue;
 
       if (checkAuthorised($page, true)) : ?>
@@ -543,7 +547,7 @@ function print_theme_header($context = null, $simple = false, $omit_login = fals
 
   // This <div> should really be moved out of here so that we can always see
   // the matching closing </div>
-  echo "<div class=\"container\">\n";
+  echo "<div class=\"container\" id=\"container\">\n";
 } // end of print_theme_header()
 
 
