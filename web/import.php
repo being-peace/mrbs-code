@@ -968,13 +968,6 @@ function get_fieldset_other_settings() : ElementFieldset
         ->setChecked($delete_room_bookings);
   $fieldset->addElement($field);
 
-  // Import past
-  $field =new FieldInputCheckbox();
-  $field->setLabel(get_vocab('import_past'))
-        ->setControlAttribute('name', 'import_past')
-        ->setChecked($import_past);
-  $fieldset->addElement($field);
-
   return $fieldset;
 }
 
