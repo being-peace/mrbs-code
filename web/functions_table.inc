@@ -848,8 +848,9 @@ function day_table_innerhtml($view, $year, $month, $day, $area_id, $room_id, $ti
         {
           $today[$room['id']][$day][$s] = array();
         }
-
-        $tbody .= cell_html($today[$room['id']][$day][$s], $query_vars, $is_invalid);
+        // 2b
+        $ext_room = (!empty($room['invalid_types']) && in_array( 'E', $room['invalid_types'] ));
+        $tbody .= cell_html($today[$room['id']][$day][$s], $query_vars, $is_invalid || $ext_room);
       }
 
       // next lines to display times on right side
