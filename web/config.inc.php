@@ -2,27 +2,42 @@
 namespace MRBS;
 
 // Layout
-$theme = "modern";
-$enable_pwa = True;
+//$theme = "modern";
+// $enable_pwa = True;
 $user_can_edit_profile = True;
 $mrbs_company = "Hecken-mobil-E";
 $vocab_override['en']['mrbs'] = "";
 $vocab_override['de']['mrbs'] = "";
 $confirmation_enabled=false;
-unset($booking_types);
+unset($booking_types);    // Include this line when copying to config.inc.php
+$booking_types[] = "N";
+$booking_types[] = "C";
+$booking_types[] = "E";
+$auth['admin_only_types'] = array('C','E');
+$vocab_override["en"]["type.N"] =     "Normal";
+$vocab_override["en"]["type.C"] =     "Cancelled";
+$vocab_override["en"]["type.E"] =     "Extern";
+
+
 $min_booking_admin_level = 1;
 $allow_cli = true;
 $locale = "de-de";
 $cli_language = "de";
 $default_language_tokens = "de";
 $mail_settings['admin_lang'] = 'de';
+//$default_language_tokens = "en";
+//$mail_settings['admin_lang'] = 'en';
+//$locale = "en-en";
 $weekstarts = 1;
 $enable_registration=false;
 $auth['only_admin_can_select_multiroom'] = true;
+$auth['db']['protected_fields'] = array('level', 'name', 'member_id');
+$auth['deny_public_access'] = true;
 // $auth['allow_custom_html'] = true;
 // $default_name = "Fahrziel";
 
 $custom_css_url = 'local/custom.css';
+$custom_js_url = 'local/custom.js';
 
 $vocab_override['de']["no_rooms_for_area"]  = "Der Bereich enthält keine Ressource";
 $vocab_override['de']["select_room"]        = "Ressource auswählen";
