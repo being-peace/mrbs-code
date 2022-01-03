@@ -17,7 +17,7 @@ $auth['admin_only_types'] = array('C','E');
 $vocab_override["en"]["type.N"] =     "Normal";
 $vocab_override["en"]["type.C"] =     "Cancelled";
 $vocab_override["en"]["type.E"] =     "Extern";
-
+//$color_types["N"]="#1976D2"; Does not work, possibly  Themes/styling.inc is loaded later
 
 $min_booking_admin_level = 1;
 $allow_cli = true;
