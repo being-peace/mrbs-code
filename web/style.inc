@@ -2,6 +2,10 @@
 namespace MRBS;
 
 
+// 2b
+echo '<link rel="icon" type="image/x-icon" href="/favicon.ico">' . "\n";
+echo '<link rel="apple-touch-icon" href="/apple-touch-icon.png">' . "\n";
+
 function link($href, $add_version=false, $media=null)
 {
   echo '<link rel="stylesheet" type="text/css" href="';
