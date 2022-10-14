@@ -26,6 +26,7 @@ services:
         volumes:
             - ../tables.my.sql:/docker-entrypoint-initdb.d/010-tables.sql
             - ./db/base_data.sql:/docker-entrypoint-initdb.d/020-base_data.sql
+            - ./db/custom_km.sql:/docker-entrypoint-initdb.d/030-custom_km.sql
             - persistent:/var/lib/mysql
         networks:
             - default
