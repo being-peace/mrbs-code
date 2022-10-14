@@ -5,3 +5,9 @@ body {
 div.N,a.N {
   background-color: #679fd6;
 }
+td.custom_header,td.date {
+    vertical-align: middle;
+}
+h2.date {
+    margin-top: 1px;
+}

@@ -4,6 +4,7 @@ namespace MRBS;
 // Layout
 //$theme = "modern";
 // $enable_pwa = True;
+
 $user_can_edit_profile = True;
 $mrbs_company = "Hecken-mobil-E";
 $vocab_override['en']['mrbs'] = "";
@@ -18,6 +19,16 @@ $vocab_override["en"]["type.N"] =     "Normal";
 $vocab_override["en"]["type.C"] =     "Cancelled";
 $vocab_override["en"]["type.E"] =     "Extern";
 //$color_types["N"]="#1976D2"; Does not work, possibly  Themes/styling.inc is loaded later
+
+// Header
+$vocab_override['de']['custom_header'] = "Weitere Autos:<br>Caddy, Markus ansprechen, 0160 7805544";
+
+
+//km
+$vocab_override['de']['entry:x.custom_km'] = "Kilometer pro Tag";
+$select_options['entry.custom_km'] = array('0' => '< 100km',
+                                           '100' => '100km-200km',
+                                           '200' => '>200km');
 
 $min_booking_admin_level = 1;
 $allow_cli = true;

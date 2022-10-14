@@ -334,6 +334,8 @@ function get_date_heading($view, $year, $month, $day) : string
   $html = '';
   $time = mktime(12, 0, 0, $month, $day, $year);
 
+  // 2b, elkato
+  $html .= '<table width="100%"><tr><td class="date">';
   $html .= '<h2 class="date">';
 
   switch ($view)
@@ -386,6 +388,8 @@ function get_date_heading($view, $year, $month, $day) : string
   }
 
   $html .= '</h2>';
+  // 2b, elkato
+  $html .= '</td><td class="custom_header">' . get_vocab("custom_header") . '</td></tr></table>';
 
   if ($display_timezone)
   {
