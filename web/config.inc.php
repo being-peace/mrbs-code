@@ -26,9 +26,9 @@ $vocab_override['de']['custom_header'] = "Weitere Autos:<br>Caddy, Markus anspre
 
 //km
 $vocab_override['de']['entry.custom_km'] = "Kilometer pro Tag";
-$select_options['entry.custom_km'] = array('0' => '< 100km',
-                                           '100' => '100km-200km',
-                                           '200' => '>200km');
+$select_options['entry.custom_km'] = array('0-1' => '< 100kmx',
+                                           '1-2' => '100km-200km',
+                                           '2-9' => '>200km');
 
 $min_booking_admin_level = 1;
 $allow_cli = true;
