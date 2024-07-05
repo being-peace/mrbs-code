@@ -21,14 +21,14 @@ $vocab_override["en"]["type.E"] =     "Extern";
 //$color_types["N"]="#1976D2"; Does not work, possibly  Themes/styling.inc is loaded later
 
 // Header
-$vocab_override['de']['custom_header'] = "Weitere Autos:<br>Caddy, Markus ansprechen, 0160 7805544";
+$vocab_override['de']['custom_header'] = "Weitere Autos:<br>Caddy: Markus, 0160 7805544<br>Lastenrad, Sprinter: Kai, 0172 5163942";
 
 
 //km
 $vocab_override['de']['entry.custom_km'] = "Kilometer pro Tag";
-$select_options['entry.custom_km'] = array('0-1' => '< 100kmx',
-                                           '1-2' => '100km-200km',
-                                           '2-9' => '>200km');
+$select_options['entry.custom_km'] = array('0-1' => '< 80 km',
+                                           '1-2' => '80 km-160 km',
+                                           '2-9' => '>160 km');
 
 $min_booking_admin_level = 1;
 $allow_cli = true;
