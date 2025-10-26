@@ -21,7 +21,7 @@ $vocab_override["en"]["type.E"] =     "Extern";
 //$color_types["N"]="#1976D2"; Does not work, possibly  Themes/styling.inc is loaded later
 
 // Header
-$vocab_override['de']['custom_header'] = "Weitere Autos:<br>Caddy: Markus, 0160 7805544<br>Lastenrad, Sprinter: Kai, 0172 5163942";
+$vocab_override['de']['custom_header'] = "Weitere Autos:<br>Caddy: Markus 0160-7805544<br>Lastenrad, Sprinter: Kai 0172-5163942<br>Leaf: Miriam 01573-7295808";
 
 
 //km
