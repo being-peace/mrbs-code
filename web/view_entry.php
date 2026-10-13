@@ -1,12 +1,14 @@
 <?php
+declare(strict_types=1);
 namespace MRBS;
 
-use MRBS\Form\FieldDiv;
-use MRBS\Form\Form;
 use MRBS\Form\ElementFieldset;
 use MRBS\Form\ElementInputSubmit;
+use MRBS\Form\FieldDiv;
 use MRBS\Form\FieldInputSubmit;
 use MRBS\Form\FieldTextarea;
+use MRBS\Form\Form;
+use MRBS\ICalendar\Calendar;
 
 
 require "defaultincludes.inc";
@@ -14,30 +16,37 @@ require_once "mrbs_sql.inc";
 require_once "functions_view.inc";
 
 
-function generate_registrant_table($row, $previous_page=null)
+function generate_registrant_table(array $row, ?string $previous_page=null) : void
 {
+  global $auth;
+
   echo "<div id=\"registrant_list\" class=\"datatable_container\">\n";
   echo "<table id=\"registrants\" class=\"admin_table display\">\n";
 
   echo "<thead>\n";
   echo '<tr>';
   echo '<th></th>';
-  echo '<th>' . get_vocab('name') . '</th>';
-  echo '<th>' . get_vocab('registered_by') . '</th>';
+  echo '<th class="name">' . get_vocab('name') . '</th>';
+  echo '<th class="name">' . get_vocab('registered_by') . '</th>';
   echo '<th>' . get_vocab('registered_on') . '</th>';
   echo "</tr>\n";
   echo "</thead>\n";
 
   echo "<tbody>\n";
 
+  $mrbs_user = session()->getCurrentUser();
+
   foreach ($row['registrants'] as $registrant)
   {
     echo '<tr>';
     echo '<td>';
     // A registration can be cancelled by the registrant or by
-    // the person who registered them or by a booking admin
+    // the person who registered them or by the booking owner or
+    // if ordinary users are allowed to delete other users' registrations.
     if (getWritable($registrant['username'], $row['room_id']) ||
-        getWritable($registrant['create_by'], $row['room_id']))
+        getWritable($registrant['create_by'], $row['room_id']) ||
+        getWritable($row['create_by'], $row['room_id']) ||
+        (isset($mrbs_user) && $auth['users_can_delete_others_registrations']))
     {
       generate_cancel_registration_button(
         $row,
@@ -47,27 +56,48 @@ function generate_registrant_table($row, $previous_page=null)
       );
     }
     echo '</td>';
-    // Registrant
-    $registrant_user = auth()->getUser($registrant['username']);
-    $display_name = (isset($registrant_user)) ? $registrant_user->display_name : $registrant['username'];
-    $sortname = get_sortable_name($display_name);
-    echo '<td data-order="' . htmlspecialchars($sortname) . '">' . htmlspecialchars($display_name) . '</td>';
-    // Registered by - only show if it's someone other than the registrant
-    $registrant_creator = auth()->getUser($registrant['create_by']);
-    if (isset($registrant_creator) && isset($registrant_user) &&
-        ($registrant_creator->username === $registrant_user->username))
+    // Registrant and Registered by
+    foreach(['username', 'create_by'] as $key)
     {
+      // Default values
       $display_name = '';
+      $email = null;
+      // Only show a name if it's the registrant or the creator is someone other than the registrant
+      if (($key != 'create_by') || ($registrant['create_by'] !== $registrant['username']))
+      {
+        if (can_see_email_addresses())
+        {
+          $user = auth()->getUser($registrant[$key]);
+          if (isset($user))
+          {
+            $display_name = $user->display_name;
+            $email = $user->email;
+          }
+          else
+          {
+            $display_name = $registrant[$key];
+          }
+        }
+        else
+        {
+          // Can be faster sometimes if we don't need the email address
+          $display_name = auth()->getDisplayName($registrant[$key]);
+        }
+      }
+      $sort_name = get_sortable_name($display_name);
+      echo '<td data-order="' . escape_html($sort_name) . '">';
+      $display_name_html = escape_html($display_name);
+      // Add a mailto: link if we've got an email address
+      if (isset($email) && ($email !== ''))
+      {
+        $display_name_html = '<a href="mailto:' . escape_html($email) . '">' . $display_name_html . '</a>';
+      }
+      echo $display_name_html;
+      echo '</td>';
     }
-    else
-    {
-      $display_name = (isset($registrant_creator)) ? $registrant_creator->display_name : $registrant['create_by'];
-    }
-    $sortname = get_sortable_name($display_name);
-    echo '<td data-order="' . htmlspecialchars($sortname) . '">' . htmlspecialchars($display_name) . '</td>';
     // Time of registration
     $time = time_date_string($registrant['registered']);
-    echo '<td data-order="' . htmlspecialchars($registrant['registered']) . '">' . htmlspecialchars($time) . '</td>';
+    echo '<td data-order="' . intval($registrant['registered']) . '">' . escape_html($time) . '</td>';
     echo "</tr>\n";
   }
 
@@ -77,7 +107,7 @@ function generate_registrant_table($row, $previous_page=null)
 }
 
 
-function get_returl($previous_page=null)
+function get_returl(?string $previous_page=null) : string
 {
   global $server;
 
@@ -88,7 +118,7 @@ function get_returl($previous_page=null)
     // Add the previous_page (ie the one we were on before view_entry) to the query string
     // so that it is preserved.
     $returl = this_page();
-    $query_string = isset($server['QUERY_STRING']) ? $server['QUERY_STRING'] : '';
+    $query_string = $server['QUERY_STRING'] ?? '';
     parse_str($query_string, $query_string_parts);
     if (isset($previous_page))
     {
@@ -104,17 +134,18 @@ function get_returl($previous_page=null)
 }
 
 
-function generate_cancel_registration_button(array $row, array $registrant, $label_text, $previous_page=null, $as_field=false)
+function generate_cancel_registration_button(array $row, array $registrant, string $label_text, ?string $previous_page=null, bool $as_field=false) : void
 {
+  global $area, $room;
+
   // Check that it is not too late for ordinary users to cancel
-  if (!is_book_admin($row['room_id']) && entry_registration_cancellation_has_closed($row))
+  if (!getWritable($row['create_by'], $row['room_id']) && entry_registration_cancellation_has_closed($row))
   {
     return;
   }
 
-  $form = new Form();
-  $form->setAttributes(array('action' => multisite('registration_handler.php'),
-    'method' => 'post'));
+  $form = new Form(Form::METHOD_POST);
+  $form->setAttributes(array('action' => multisite('registration_handler.php')));
 
   if ($as_field)
   {
@@ -125,13 +156,14 @@ function generate_cancel_registration_button(array $row, array $registrant, $lab
   $form->addHiddenInputs(array(
     'action' => 'cancel',
     'registration_id' => $registrant['id'],
-    'returl' => get_returl($previous_page)
+    'returl' => get_returl($previous_page),
+    'area' => $area,
+    'room' => $room
   ));
 
   // Submit button
   $button = new ElementInputSubmit();
-  $registrant_user = auth()->getUser($registrant['username']);
-  $display_name = (isset($registrant_user)) ? $registrant_user->display_name : $registrant['username'];
+  $display_name = auth()->getDisplayName($registrant['username']);
   $message = get_vocab("confirm_del_registrant", $display_name);
   $button->setAttributes(array(
       'value' => $label_text,
@@ -155,10 +187,12 @@ function generate_cancel_registration_button(array $row, array $registrant, $lab
 }
 
 
-function generate_register_button($row, $previous_page=null)
+function generate_register_button(array $row, ?string $previous_page=null) : void
 {
-  // Check that the user is an an admin or else that the entry is open for registration
-  if (!is_book_admin($row['room_id']) && !entry_registration_is_open($row))
+  global $area, $room;
+
+  // Check that the user is an admin or else that the entry is open for registration
+  if (!getWritable($row['create_by'], $row['room_id']) && !entry_registration_is_open($row))
   {
     return;
   }
@@ -166,16 +200,17 @@ function generate_register_button($row, $previous_page=null)
   $mrbs_user = session()->getCurrentUser();
   $can_register_others = can_register_others($row['room_id']);
 
-  $form = new Form();
+  $form = new Form(Form::METHOD_POST);
   $form->setAttributes(array('action' => multisite('registration_handler.php'),
-                             'class'  => 'standard',
-                             'method' => 'post'));
+                             'class'  => 'standard'));
 
   // Hidden inputs
   $form->addHiddenInputs(array(
       'action' => 'register',
       'event_id' => $row['id'],
-      'returl' => get_returl($previous_page)
+      'returl' => get_returl($previous_page),
+      'area' => $area,
+      'room' => $room
     ));
 
   if (!$can_register_others)
@@ -210,7 +245,7 @@ function generate_register_button($row, $previous_page=null)
 }
 
 
-function generate_event_registration($row, $previous_page=null)
+function generate_event_registration(array $row, ?string $previous_page=null) : void
 {
   global $auth;
 
@@ -232,30 +267,30 @@ function generate_event_registration($row, $previous_page=null)
   if ($row['registration_opens_enabled'])
   {
     echo '<tr>';
-    echo '<td>' . htmlspecialchars(get_vocab('registration_opens')) . '</td>';
-    echo '<td>' . htmlspecialchars(time_date_string(registration_opens_timestamp($row))) . '</td>';
+    echo '<td>' . escape_html(get_vocab('registration_opens')) . '</td>';
+    echo '<td>' . escape_html(time_date_string(registration_opens_timestamp($row))) . '</td>';
     echo "</tr>\n";
   }
 
   if ($row['registration_closes_enabled'])
   {
     echo '<tr>';
-    echo '<td>' . htmlspecialchars(get_vocab('registration_closes')) . '</td>';
-    echo '<td>' . htmlspecialchars(time_date_string(registration_closes_timestamp($row))) . '</td>';
+    echo '<td>' . escape_html(get_vocab('registration_closes')) . '</td>';
+    echo '<td>' . escape_html(time_date_string(registration_closes_timestamp($row))) . '</td>';
     echo "</tr>\n";
   }
 
   if (!empty($row['registrant_limit_enabled']))
   {
     echo '<tr>';
-    echo '<td>' . htmlspecialchars(get_vocab('registrant_limit')) . '</td>';
-    echo '<td>' . htmlspecialchars($row['registrant_limit']) . '</td>';
+    echo '<td>' . escape_html(get_vocab('registrant_limit')) . '</td>';
+    echo '<td>' . intval($row['registrant_limit']) . '</td>';  // Redundant escaping, just in case
     echo "</tr>\n";
   }
 
   echo '<tr>';
-  echo '<td>' . htmlspecialchars(get_vocab('n_registered')) . '</td>';
-  echo '<td>' . htmlspecialchars($n_registered) . '</td>';
+  echo '<td>' . escape_html(get_vocab('n_registered')) . '</td>';
+  echo '<td>' . intval($n_registered) . '</td>';  // Redundant escaping, just in case
   echo "</tr>\n";
   echo "</tbody>\n";
   echo "</table>\n";
@@ -272,41 +307,47 @@ function generate_event_registration($row, $previous_page=null)
 
   // Display registration information and buttons for this user
   $mrbs_user = session()->getCurrentUser();
-  if (!$can_register_others && in_arrayi($mrbs_user->username,
-                                         array_column($row['registrants'], 'username')))
+  // Doesn't make sense to have anonymous registration at the moment.
+  // You'd have to have a different kind of registration form - and
+  // also think about who is allowed to cancel.
+  if (isset($mrbs_user) && ($mrbs_user->username !== ''))
   {
-    echo '<p>' . htmlspecialchars(get_vocab('already_registered')) . "</p>\n";
-    foreach ($row['registrants'] as $registrant)
+    if (!$can_register_others && in_arrayi($mrbs_user->username,
+        array_column($row['registrants'], 'username')))
     {
-      if (strcasecmp($mrbs_user->username, $registrant['username']) === 0)
+      echo '<p>' . escape_html(get_vocab('already_registered')) . "</p>\n";
+      foreach ($row['registrants'] as $registrant)
       {
-        $this_registrant = $registrant;
-        break;
+        if (compare_usernames($mrbs_user->username, $registrant['username']) === 0)
+        {
+          $this_registrant = $registrant;
+          break;
+        }
       }
-    }
-    // If they can see others they'll have a delete button against their name.  Otherwise
-    // we'll need to provide one for them.
-    if (!$can_see_others)
-    {
-      generate_cancel_registration_button(
+      // If they can see others they'll have a delete button against their name.  Otherwise
+      // we'll need to provide one for them.
+      if (!$can_see_others)
+      {
+        generate_cancel_registration_button(
           $row,
           $this_registrant,
           get_vocab('cancel_registration'),
           $previous_page,
           true
         );
-    }
-  }
-  else
-  {
-    if (empty($row['registrant_limit_enabled']) ||
-      ($row['registrant_limit'] > $n_registered))
-    {
-      generate_register_button($row, $previous_page);
+      }
     }
     else
     {
-      echo '<p>' . htmlspecialchars(get_vocab('event_full')) . "</p>\n";
+      if (empty($row['registrant_limit_enabled']) ||
+          ($row['registrant_limit'] > $n_registered))
+      {
+        generate_register_button($row, $previous_page);
+      }
+      else
+      {
+        echo '<p>' . escape_html(get_vocab('event_full')) . "</p>\n";
+      }
     }
   }
 
@@ -316,23 +357,22 @@ function generate_event_registration($row, $previous_page=null)
 
 // Generates a single button.  Parameters in the array $params
 //
-//    Manadatory parameters
+//    Mandatory parameters
 //      action    The form action attribute
 //      value     The value of the button
 //      inputs    An array of hidden form inputs
 //
 //    Optional parameters
 //      button_attributes   An array of attributes to be used for the button.
-function generate_button(array $params, array $button_attributes=array())
+function generate_button(array $params, array $button_attributes=array()) : void
 {
   // Note that until IE supports the form attribute on the button tag, we can't
   // use a <button> here and have to use the <input type="submit"> to create the
   // button.   This unfortunately means that styling options on the button are limited.
 
-  $form = new Form();
+  $form = new Form(Form::METHOD_POST);
 
-  $attributes = array('action' => $params['action'],
-                      'method' => 'post');
+  $attributes = array('action' => $params['action']);
 
   $form->setAttributes($attributes);
 
@@ -349,8 +389,207 @@ function generate_button(array $params, array $button_attributes=array())
 }
 
 
+function generate_copy_buttons(int $id, ?int $repeat_id, bool $series, string $returl, bool $repeats_allowed) : void
+{
+  global $day, $month, $year;
+
+  echo "<div>\n";
+
+  if (!$series)
+  {
+    echo "<div>\n";
+    $params = [
+      'action' => multisite('edit_entry.php'),
+      'value' => get_vocab('copyentry'),
+      'inputs' => [
+        'id' => $id,
+        'copy' => true,
+        'returl' => $returl
+      ]
+    ];
+    generate_button($params);
+    echo "</div>\n";
+  }
+
+  if ((!empty($repeat_id) || $series) && $repeats_allowed)
+  {
+    echo "<div>\n";
+    $params = [
+      'action' => multisite("edit_entry.php?day=$day&month=$month&year=$year"),
+      'value' => get_vocab('copyseries'),
+      'inputs' => [
+        'id' => $id,
+        'edit_series' => true,
+        'copy' => true,
+        'returl' => $returl
+      ]
+    ];
+    generate_button($params);
+    echo "</div>\n";
+  }
+
+  echo "</div>\n";
+}
+
+
+function generate_edit_and_delete_buttons(array $row, int $id, ?int $repeat_id, bool $series, string $returl, bool $repeats_allowed) : void
+{
+  global $day, $month, $year;
+
+  // Check whether the entry is deletable (and therefore editable).  Also get the
+  // reason.  We only get the first reason because it's easier just to display one
+  // reason in a tooltip, rather than a complete list.  [Note: if the entry is
+  // deletable but the series is not, the series button will not be disabled.  This
+  // is something that needs to be fixed in the future.]
+  $violations = mrbsCheckPolicy($row, null, null, true);
+
+  if (empty($violations['errors']))
+  {
+    $button_attributes = [];
+  }
+  else
+  {
+    $button_attributes = [
+      'disabled' => true,
+      'title' => $violations['errors'][0]
+    ];
+  }
+
+  // Edit and Edit Series
+  echo "<div>\n";
+  if (!$series)
+  {
+    echo "<div>\n";
+    $params = [
+      'action' => multisite('edit_entry.php'),
+      'value' => get_vocab('editentry'),
+      'inputs' => ['id' => $id, 'returl' => $returl]
+    ];
+    generate_button($params, $button_attributes);
+    echo "</div>\n";
+  }
+  if ((!empty($repeat_id) || $series) && $repeats_allowed)
+  {
+    echo "<div>\n";
+    $params = [
+      'action' => multisite("edit_entry.php?day=$day&month=$month&year=$year"),
+      'value' => get_vocab('editseries'),
+      'inputs' => [
+        'id' => $id,
+        'edit_series' => true,
+        'returl' => $returl
+      ]
+    ];
+
+    if (empty($button_attributes['disabled']) &&
+        isset($repeat_id) &&
+        series_has_registrants($repeat_id))
+    {
+      $button_attributes['onclick'] = "return confirm('" . get_js_vocab("confirm_edit_series") . "');";
+    }
+    generate_button($params, $button_attributes);
+    echo "</div>\n";
+  }
+  echo "</div>\n";
+
+  // Delete and Delete Series
+  echo "<div>\n";
+
+  // For the delete buttons, either the button is disabled and we show the reason why, or else
+  // we add a click event to confirm the deletion
+  unset($button_attributes['onclick']);
+
+  if (!$series)
+  {
+    echo "<div>\n";
+    if (empty($button_attributes['disabled']))
+    {
+      $button_attributes['onclick'] = "return confirm('" . get_js_vocab('confirmdel') . "');";
+    }
+    $params = [
+      'action' => multisite('del_entry.php'),
+      'value' => get_vocab('deleteentry'),
+      'inputs' => [
+        'id' => $id,
+        'series' => 0,
+        'returl' => $returl
+      ]
+    ];
+    generate_button($params, $button_attributes);
+    echo "</div>\n";
+  }
+
+  if ((!empty($repeat_id) || $series) && $repeats_allowed)
+  {
+    echo "<div>\n";
+    if (empty($button_attributes['disabled']))
+    {
+      $button_attributes['onclick'] = "return confirm('" . get_js_vocab('confirmdel_series') . "');";
+    }
+    $params = [
+      'action' => multisite("del_entry.php?day=$day&month=$month&year=$year"),
+      'value' => get_vocab('deleteseries'),
+      'inputs' => [
+        'id' => $id,
+        'series' => 1,
+        'returl' => $returl
+      ]
+    ];
+    generate_button($params, $button_attributes);
+    echo "</div>\n";
+  }
+
+  echo "</div>\n";
+}
+
+
+function generate_export_buttons(int $id, ?int $repeat_id, bool $series, string $returl) : void
+{
+  global $day, $month, $year;
+
+  // The iCalendar information has the full booking details in it, so we will not allow
+  // it to be exported if it is private and the user is not authorised to see it.
+  echo "<div>\n";
+
+  if (!$series)
+  {
+    echo "<div>\n";
+    $params = [
+      'action' => multisite('view_entry.php'),
+      'value' => get_vocab('exportentry'),
+      'inputs' => [
+        'id' => $id,
+        'action' => 'export',
+        'returl' => $returl
+      ]
+    ];
+    generate_button($params);
+    echo "</div>\n";
+  }
+
+  if (!empty($repeat_id) || $series)
+  {
+    echo "<div>\n";
+    $params = [
+      'action' => multisite("view_entry.php?day=$day&month=$month&year=$year"),
+      'value' => get_vocab('exportseries'),
+      'inputs' => [
+        'id' => $repeat_id,
+        'action' => 'export',
+        'series' => 1,
+        'returl' => $returl
+      ]
+    ];
+    generate_button($params);
+    echo "</div>\n";
+  }
+
+  echo "</div>\n";
+}
+
+
 // Generates the Approve, Reject and More Info buttons
-function generateApproveButtons($id, $series)
+function generateApproveButtons(int $id, bool $series) : void
 {
   global $returl;
   global $entry_info_time, $entry_info_user, $repeat_info_time, $repeat_info_user;
@@ -411,7 +650,7 @@ function generateApproveButtons($id, $series)
   echo "</tr>\n";
 }
 
-function generateOwnerButtons($id, $series)
+function generateOwnerButtons(int $id, bool $series) : void
 {
   global $mrbs_username, $create_by, $awaiting_approval, $area;
   global $reminders_enabled, $last_reminded, $reminder_interval;
@@ -420,9 +659,10 @@ function generateOwnerButtons($id, $series)
   // Remind button if you're the owner AND there's a booking awaiting
   // approval AND sufficient time has passed since the last reminder
   // AND we want reminders in the first place
-  if (($reminders_enabled) &&
-      (strcasecmp($mrbs_username, $create_by) === 0) &&
-      ($awaiting_approval) &&
+  if ($reminders_enabled &&
+      isset($mrbs_username) &&
+      (compare_usernames($mrbs_username, $create_by) === 0) &&
+      $awaiting_approval &&
       (working_time_diff(time(), $last_reminded) >= $reminder_interval))
   {
     echo "<tr>\n";
@@ -450,22 +690,21 @@ function generateOwnerButtons($id, $series)
   }
 }
 
-function generateTextArea($form_action, $id, $series, $action_type, $returl, $submit_value, $caption, $value='')
+function generateTextArea(string $form_action, int $id, bool $series, string $action_type, string $returl, string $submit_value, string $caption, string $value='') : void
 {
   echo "<tr><td id=\"caption\" colspan=\"2\">$caption</td></tr>\n";
   echo "<tr>\n";
   echo "<td id=\"note\" class=\"no_suffix\" colspan=\"2\">\n";
 
-  $form = new Form();
+  $form = new Form(Form::METHOD_POST);
 
-  $attributes = array('action' => $form_action,
-                      'method' => 'post');
+  $attributes = array('action' => $form_action);
 
   $form->setAttributes($attributes);
 
   // Hidden inputs
   $hidden_inputs = array('id'     => $id,
-                         'series' => $series,
+                         'series' => ($series) ? 1 : 0,
                          'returl' => $returl,
                          'action' => $action_type);
   $form->addHiddenInputs($hidden_inputs);
@@ -499,30 +738,32 @@ function generateTextArea($form_action, $id, $series, $action_type, $returl, $su
 // If $series is TRUE, it means that the $id is the id of an
 // entry in the repeat table.  Otherwise it's from the entry table.
 $id = get_form_var('id', 'int');
-$series = get_form_var('series', 'int');
+$series = get_form_var('series', 'bool', false);
 $action = get_form_var('action', 'string');
-$returl = get_form_var('returl', 'string');
+$returl = get_form_var('returl', 'url_local');
 $error = get_form_var('error', 'string');
-$previous_page = get_form_var('previous_page', 'string');
+$previous_page = get_form_var('previous_page', 'url_local');
 
-if (!isset($previous_page) && isset($server['HTTP_REFERER']))
+$referrer = session()->getReferrer();
+
+if (!isset($previous_page) && isset($referrer))
 {
-  $previous_page = $server['HTTP_REFERER'];
+  $previous_page = $referrer;
 }
 
 // Need to tell all the links where to go back to after an edit or delete
 if (!isset($returl))
 {
-  // We need $_SERVER['HTTP_REFERER'] to contain an actual page, and not be a directory, ie end in '/'
-  if (isset($server['HTTP_REFERER']) && (substr($server['HTTP_REFERER'], -1) != '/'))
+  // We need $referrer to contain an actual page, and not be a directory, ie end in '/'
+  if (isset($referrer) && (substr($referrer, -1) != '/'))
   {
-    $parsed_url = parse_url($server['HTTP_REFERER']);
+    $parsed_url = parse_url($referrer);
     if (isset($parsed_url['path']))
     {
       $returl = basename($parsed_url['path']);
     }
   }
-  // If we still haven't got a referer (eg if we've come here from an email) then construct
+  // If we still haven't got a referrer (eg if we've come here from an email) then construct
   // a sensible place to go to afterwards
   if (!isset($returl))
   {
@@ -530,7 +771,7 @@ if (!isset($returl))
   }
 
   // Add on the query string
-  if (isset($parsed_url) && isset($parsed_url['query']))
+  if (isset($parsed_url['query']))
   {
     $returl .= '?' . $parsed_url['query'];
   }
@@ -571,6 +812,7 @@ $area = $row['area_id'];
 // Get the area settings for the entry's area.   In particular we want
 // to know how to display private/public bookings in this area.
 get_area_settings($row['area_id']);
+$area_periods = Periods::getForArea($area);
 
 // Work out whether the room or area is disabled
 $room_disabled = $row['room_disabled'] || $row['area_disabled'];
@@ -587,7 +829,7 @@ $keep_private = (is_private_event($private) && !$writeable);
 $last_reminded = (empty($row['reminded'])) ? $row['last_updated'] : $row['reminded'];
 
 
-if ($series == 1)
+if ($series)
 {
   $repeat_id = $id;  // Save the repeat_id
   // I also need to set $id to the value of a single entry as it is a
@@ -635,9 +877,9 @@ else
 
 if (isset($action) && ($action == "export"))
 {
-  if ($keep_private  || $enable_periods)
+  if ($keep_private  || ($enable_periods && !$area_periods->hasTimes()))
   {
-    // should never normally be able to get here, but if we have then
+    // Should never normally be able to get here, but if we have then
     // go somewhere safe.
     location_header('index.php');
   }
@@ -648,7 +890,7 @@ if (isset($action) && ($action == "export"))
     $sql = "SELECT E.*, "
          .  db()->syntax_timestamp_to_unix("E.timestamp") . " AS last_updated, "
          . "A.area_name, R.room_name, "
-         . "A.approval_enabled, A.confirmation_enabled";
+         . "A.approval_enabled, A.confirmation_enabled, A.timezone";
     if ($series)
     {
       // If it's a series we want the repeat information
@@ -673,19 +915,18 @@ if (isset($action) && ($action == "export"))
 
     if ($series)
     {
-      $sql .= " ORDER BY E.ical_recur_id";
+      $sql .= " ORDER BY E.start_time";
     }
     $res = db()->query($sql, $sql_params);
 
     // Export the calendar
-    require_once "functions_ical.inc";
-
-    $content_type = "application/ics;  charset=" . get_charset(). "; name=\"" . $mail_settings['ics_filename'] . ".ics\"";
+    $content_type = "application/ics;  charset=" . Language::MRBS_CHARSET . "; name=\"" . $mail_settings['ics_filename'] . ".ics\"";
     $content_disposition = "attachment; filename=\"" . $mail_settings['ics_filename'] . ".ics\"";
     http_headers(array("Content-Type: $content_type",
                        "Content-Disposition: $content_disposition"));
 
-    export_icalendar($res, $keep_private);
+    $calendar = Calendar::createFromStatement($res, $keep_private);
+    echo $calendar->toString();
     exit;
   }
 }
@@ -700,27 +941,18 @@ $context = array(
     'month'     => $month,
     'day'       => $day,
     'area'      => $area,
-    'room'      => isset($room) ? $room : null
+    'room'      => $room ?? null
   );
 
 print_header($context);
 
-if (empty($series))
-{
-  $series = 0;
-}
-else
-{
-  $series = 1;
-}
-
 // Now that we know all the data we start drawing it
 
 echo "<h3" . (($keep_private && $is_private_field['entry.name']) ? " class=\"private\"" : "") . ">\n";
-echo ($keep_private && $is_private_field['entry.name']) ? "[" . get_vocab("unavailable") . "]" : htmlspecialchars($row['name']);
+echo ($keep_private && $is_private_field['entry.name']) ? get_vocab("unavailable") : escape_html($row['name']);
 if (is_private_event($private) && $writeable)
 {
-  echo ' ('.get_vocab("unavailable").')';
+  echo ' ' . get_vocab("unavailable");
 }
 echo "</h3>\n";
 
@@ -736,7 +968,9 @@ if (!empty($error))
   echo "<tr><td>&nbsp;</td><td class=\"error\">" . get_vocab($error) . "</td></tr>\n";
 }
 
-echo create_details_body($row, true, $keep_private, $room_disabled);
+// If it's a registration event, then we only show the most important details, unless it's writable.
+$major_details_only = $row['allow_registration'] && !getWritable($row['create_by'], $row['room_id'], false);
+echo create_details_body($row, true, $keep_private, $room_disabled, $major_details_only);
 
 // If bookings require approval, and the room is enabled, put the buttons
 // to do with managing the bookings in the footer
@@ -801,16 +1035,11 @@ if ($approval_enabled && !$room_disabled && $awaiting_approval)
       }
     }
     // Buttons for the owner of this booking
-    elseif (strcasecmp($mrbs_username, $create_by) === 0)
+    elseif (isset($mrbs_username) && compare_usernames($mrbs_username, $create_by) === 0)
     {
       generateOwnerButtons($id, $series);
     }
     // Others don't get any buttons
-    else
-    {
-      // But valid HTML requires that there's something inside the <tfoot></tfoot>
-      echo "<tr><td></td><td></td></tr>\n";
-    }
   }
   echo "</tfoot>\n";
 }
@@ -818,191 +1047,50 @@ echo "</table>\n";
 
 echo "<div id=\"view_entry_nav\">\n";
 
-// Set the return URL.  If $previous_page is set then it means that we've come from
-// the registration handler and the original return URL is held in $previous_page.
+// Set the return URL.  If $previous_page is set and $returl is not 'index.php' then
+// it means that we've come from the registration handler and the original return URL
+// is held in $previous_page.
 // TODO: simplify the code concerning return urls, target urls and the previous page
 // TODO: throughout MRBS.
-if (isset($previous_page))
+
+if (isset($previous_page) &&
+    (!(isset($returl) && (basename(parse_url($returl)['path']) == 'index.php'))))
 {
   $returl = $previous_page;
 }
 
-// Only show the links for Edit and Delete if the room is enabled.    We're
-// allowed to view and copy existing bookings in disabled rooms, but not to
-// modify or delete them.
-if (!$room_disabled)
+if (!$major_details_only)
 {
-  // Only show the Edit and Delete buttons if the user is allowed to use them
-  if (getWritable($create_by, $room))
+  // Only show the links for Edit and Delete if (a) the room is enabled, and (b) the user
+  // is allowed to use them.  (We're allowed to view and copy existing bookings in disabled
+  // rooms, but not to modify or delete them.)
+  if (!$room_disabled && getWritable($create_by, $room))
   {
-    // Check whether the entry is deletable (and therefore editable).  Also get the
-    // reason.  We only get the first reason because it's easier just to display one
-    // reason in a tooltip, rather than a complete list.  [Note: if the entry is
-    // deletable but the series is not, the series button will not be disabled.  This
-    // is something that needs to be fixed in the future.]
-    $violations = mrbsCheckPolicy($row, false, false, true);
+    generate_edit_and_delete_buttons($row, $id, $repeat_id, $series, $returl, $repeats_allowed);
+  }
 
-    if (empty($violations['errors']))
-    {
-      $button_attributes = array();
-    }
-    else
-    {
-      $button_attributes = array('disabled' => true,
-                                 'title'    => $violations['errors'][0]);
-    }
+  // Copy and Copy Series
+  if (!$auth['only_admin_can_copy_others_entries'] || $writeable)
+  {
+    generate_copy_buttons($id, $repeat_id, $series, $returl, $repeats_allowed);
+  }
 
-    // Edit and Edit Series
-    echo "<div>\n";
-    if (!$series)
-    {
-      echo "<div>\n";
-      $params = array('action' => multisite('edit_entry.php'),
-                      'value'  => get_vocab('editentry'),
-                      'inputs' => array('id' => $id,
-                      'returl' => $returl)
-      );
-      generate_button($params, $button_attributes);
-      echo "</div>\n";
-    }
-    if ((!empty($repeat_id) || $series) && $repeats_allowed)
-    {
-      echo "<div>\n";
-      $params = array('action'    => multisite("edit_entry.php?day=$day&month=$month&year=$year"),
-                      'value'     => get_vocab('editseries'),
-                      'inputs'    => array('id' => $id,
-                      'edit_type' => 'series',
-                      'returl'    => $returl)
-      );
-
-      if (empty($button_attributes['disabled']) &&
-          isset($repeat_id) &&
-          series_has_registrants($repeat_id))
-      {
-        $button_attributes['onclick'] = "return confirm('" . escape_js(get_vocab("confirm_edit_series")) . "');";
-      }
-      generate_button($params, $button_attributes);
-      echo "</div>\n";
-    }
-    echo "</div>\n";
-
-    // Delete and Delete Series
-    echo "<div>\n";
-
-    // For the delete buttons, either the button is disabled and we show the reason why, or else
-    // we add a click event to confirm the deletion
-    unset($button_attributes['onclick']);
-    
-    if (!$series)
-    {
-      echo "<div>\n";
-      if (empty($button_attributes['disabled']))
-      {
-        $button_attributes['onclick'] = "return confirm('" . escape_js(get_vocab('confirmdel')) . "');";
-      }
-      $params = array(
-          'action' => multisite('del_entry.php'),
-          'value'  => get_vocab('deleteentry'),
-          'inputs' => array('id' => $id,
-                            'series' => 0,
-                            'returl' => $returl)
-        );
-      generate_button($params, $button_attributes);
-      echo "</div>\n";
-    }
-
-    if ((!empty($repeat_id) || $series) && $repeats_allowed)
-    {
-      echo "<div>\n";
-      if (empty($button_attributes['disabled']))
-      {
-        $button_attributes['onclick'] = "return confirm('" . escape_js(get_vocab('confirmdel_series')) . "');";
-      }
-      $params = array(
-          'action' => multisite("del_entry.php?day=$day&month=$month&year=$year"),
-          'value'  => get_vocab('deleteseries'),
-          'inputs' => array('id' => $id,
-                            'series' => 1,
-                            'returl' => $returl)
-        );
-      generate_button($params, $button_attributes);
-      echo "</div>\n";
-    }
-
-    echo "</div>\n";
+  // Export and Export Series
+  if (!$keep_private && (!$enable_periods || ($enable_periods && $area_periods->hasTimes())))
+  {
+    generate_export_buttons($id, $repeat_id, $series, $returl);
   }
 }
 
-// Copy and Copy Series
-if (!$auth['only_admin_can_copy_others_entries'] || $writeable)
-{
-  echo "<div>\n";
-  if (!$series) {
-    echo "<div>\n";
-    $params = array('action' => multisite('edit_entry.php'),
-      'value' => get_vocab('copyentry'),
-      'inputs' => array('id' => $id,
-        'copy' => 1,
-        'returl' => $returl)
-    );
-    generate_button($params);
-    echo "</div>\n";
-  }
-  if ((!empty($repeat_id) || $series) && $repeats_allowed) {
-    echo "<div>\n";
-    $params = array('action' => multisite("edit_entry.php?day=$day&month=$month&year=$year"),
-      'value' => get_vocab('copyseries'),
-      'inputs' => array('id' => $id,
-        'edit_type' => 'series',
-        'copy' => 1,
-        'returl' => $returl)
-    );
-    generate_button($params);
-    echo "</div>\n";
-  }
-  echo "</div>\n";
-}
+echo "</div>\n";  // id="view_entry_nav"
 
-// Export and Export Series
-if (!$keep_private && !$enable_periods)
-{
-  // The iCalendar information has the full booking details in it, so we will not allow
-  // it to be exported if it is private and the user is not authorised to see it.
-  // iCalendar information doesn't work with periods at the moment (no periods to times mapping)
-  echo "<div>\n";
-  if (!$series)
-  {
-    echo "<div>\n";
-    $params = array('action' => multisite('view_entry.php'),
-                    'value'  => get_vocab('exportentry'),
-                    'inputs' => array('id' => $id,
-                                      'action' => 'export',
-                                      'returl' => $returl)
-                   );
-    generate_button($params);
-    echo "</div>\n";
-  }
-  if (!empty($repeat_id) || $series)
-  {
-    echo "<div>\n";
-    $params = array('action' => multisite("view_entry.php?day=$day&month=$month&year=$year"),
-                    'value'  => get_vocab('exportseries'),
-                    'inputs' => array('id' => $repeat_id,
-                                      'action' => 'export',
-                                      'series' => 1,
-                                      'returl' => $returl)
-                   );
-    generate_button($params);
-    echo "</div>\n";
-  }
-  echo "</div>\n";
-}
-echo "</div>\n";
-
-if (isset($previous_page)) //remove the link if displayed from an email
+// Don't display a link to the previous page if there isn't one (eg if we've got here
+// from an email), or if it would just send the user to the same page for some reason.
+if (isset($previous_page) &&
+    (basename(parse_url($previous_page)['path']) !== this_page()))
 {
   echo "<div id=\"returl\">\n";
-  echo '<a href="' . htmlspecialchars($previous_page) . '">' . get_vocab('returnprev') . "</a>\n";
+  echo '<a href="' . escape_html($previous_page) . '">' . get_vocab('returnprev') . "</a>\n";
   echo "</div>\n";
 }
 

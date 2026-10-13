@@ -17,7 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * PHP Version 5
+ * PHP Version 7
  *
  * @file     CAS/Request/AbstractRequest.php
  * @category Authentication
@@ -80,7 +80,8 @@ implements CAS_Request_MultiRequestInterface
     /**
      * Retrieve the number of requests added to this batch.
      *
-     * @return number of request elements
+     * @return int number of request elements
+     * @throws CAS_OutOfSequenceException if the request has already been sent
      */
     public function getNumRequests()
     {
@@ -138,7 +139,12 @@ implements CAS_Request_MultiRequestInterface
             $buf = curl_multi_getcontent($handles[$i]);
             $request->_storeResponseBody($buf);
             curl_multi_remove_handle($multiHandle, $handles[$i]);
-            curl_close($handles[$i]);
+            // curl_close() doesn't do anything from PHP 8.0 onwards (because the curl
+            // handle is an object and not a resource) and is deprecated from PHP 8.5.
+            if (version_compare(PHP_VERSION, '8.0.0') < 0)
+            {
+              curl_close($handles[$i]);
+            }
         }
 
         curl_multi_close($multiHandle);

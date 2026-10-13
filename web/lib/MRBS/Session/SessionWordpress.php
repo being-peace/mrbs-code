@@ -1,7 +1,9 @@
 <?php
+declare(strict_types=1);
 namespace MRBS\Session;
 
 use MRBS\User;
+use function MRBS\auth;
 
 require_once MRBS_ROOT . '/auth/cms/wordpress.inc';
 
@@ -20,17 +22,21 @@ class SessionWordpress extends SessionWithLogin
   {
     if (!is_user_logged_in())
     {
-      return null;
+      return parent::getCurrentUser();
     }
 
     $mrbs_user = wp_get_current_user();
 
-    return \MRBS\auth()->getUser($mrbs_user->user_login);
+    return auth()->getUser($mrbs_user->user_login);
   }
 
 
   // Can only return a valid username.  If the username and password are not valid it will ask for new ones.
-  protected function getValidUser(?string $username, ?string $password) : string
+  protected function getValidUser(
+    #[\SensitiveParameter]
+    ?string $username,
+    #[\SensitiveParameter]
+    ?string $password) : string
   {
     global $errors; // $errors is a WordPress global
 
@@ -44,8 +50,8 @@ class SessionWordpress extends SessionWithLogin
     {
       $errors = $wp_user;
       $error_message = apply_filters('login_errors', $wp_user->get_error_message());
-      // The Wordpress error message contains HTML so don't escape it.
-      $this->authGet($this->form['target_url'], $this->form['returl'], $error_message, $raw=true);
+      // The WordPress error message contains HTML so don't escape it.
+      $this->authGet($this->form['target_url'], $this->form['returl'], $error_message, true);
       exit(); // unnecessary because authGet() exits, but just included for clarity
     }
 

@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace MRBS;
 
 
@@ -9,10 +10,14 @@ use PHPMailer\PHPMailer\PHPMailer;
 
 class User
 {
+  // Standard properties
   public $username;
   public $display_name;
   public $email;
   public $level;
+
+  // Extra properties held here, accessed through magic methods
+  protected  $data = array();
 
 
   public function __construct($username=null)
@@ -23,6 +28,58 @@ class User
     $this->display_name = $username;
     $this->setDefaultEmail();
     $this->level = 0; // Play it safe
+  }
+
+
+  public function __get($name)
+  {
+    return (array_key_exists($name, $this->data)) ? $this->data[$name] : null;
+  }
+
+
+  public function __set($name, $value)
+  {
+    $this->data[$name] = $value;
+  }
+
+
+  public function __isset($name)
+  {
+    return (array_key_exists($name, $this->data) && isset($this->data[$name]));
+  }
+
+
+  public function __unset($name)
+  {
+    unset($this->data[$name]);
+  }
+
+
+  // Checks whether the user appears somewhere in the bookings as (a) the creator
+  // of a booking, (b) the modifier of a booking or (c) a registrant.
+  public function isInBookings() : bool
+  {
+    $sql_params = [':username' => $this->username];
+
+    foreach (['entry', 'repeat'] as $table)
+    {
+      $sql = "SELECT COUNT(id)
+                FROM ". _tbl($table) . "
+               WHERE (create_by = :username)
+                  OR (modified_by = :username)
+               LIMIT 1";
+      if (db()->query1($sql, $sql_params) > 0)
+      {
+        return true;
+      }
+    }
+
+    $sql = "SELECT COUNT(id)
+              FROM ". _tbl('participants') . "
+             WHERE username = :username
+             LIMIT 1";
+
+    return (db()->query1($sql, $sql_params) > 0);
   }
 
 
@@ -50,8 +107,8 @@ class User
     }
 
     $mailer = new PHPMailer();
-    $mailer->CharSet = get_mail_charset();
-    
+    $mailer->CharSet = Language::MAIL_CHARSET;
+
     // Note that addrFormat() returns a MIME-encoded address
     return $mailer->addrFormat(array($this->email, $this->display_name));
   }
@@ -73,9 +130,9 @@ class User
       if (isset($mail_settings['username_suffix']) && ($mail_settings['username_suffix'] !== ''))
       {
         $suffix = $mail_settings['username_suffix'];
-        if (substr($this->email, -strlen($suffix)) === $suffix)
+        if (mb_substr($this->email, -mb_strlen($suffix)) === $suffix)
         {
-          $this->email = substr($this->email, 0, -strlen($suffix));
+          $this->email = mb_substr($this->email, 0, -mb_strlen($suffix));
         }
       }
 
@@ -87,6 +144,12 @@ class User
         // compatibility.
         $domain = ltrim($mail_settings['domain'], '@');
         $this->email .= '@' . $domain;
+      }
+
+      // Validate the resulting email address
+      if (!validate_email($this->email))
+      {
+        $this->email = null;
       }
     }
   }

@@ -113,7 +113,7 @@ $vocab["brief_description"]  = "Breve descrizione.";
 $vocab["status"]                  = "Stato";
 $vocab["public"]                  = "Pubblico";
 $vocab["private"]                 = "Privato";
-$vocab["unavailable"]             = "Non disponibile";
+$vocab["unavailable"]             = "[Non disponibile]";
 $vocab["is_mandatory_field"]      = "è un campo obbligatorio, per favore indicare un valore.";
 $vocab["missing_mandatory_field"] = "Non è stato indicato un valore per il campo obbligatorio";
 $vocab["confirmed"]               = "Confermato";
@@ -199,7 +199,7 @@ $vocab["min_delete_time_before"]  = 'Non è possibile modificare o cancellare un
 $vocab["max_delete_time_before"]  = 'Non è possibile modificare o cancellare una prenotazione che finisce dopo %1$d %2$s';
 $vocab["earliest_booking_date"]   = "La data di prenotazione più lontana è %s";
 $vocab["latest_booking_date"]     = "L'ultima data di prenotazione è %s";
-$vocab["max_booking_duration"]    = "La durata massima di una prenotazione è";
+$vocab["max_booking_duration"]    = 'La durata massima di una prenotazione è %1$d %2$s';
 $vocab["max_per_day_global"]      = "Il numero massimo di prenotazioni al giorno per utente nell'intero sistema è";
 $vocab["max_per_week_global"]     = "Il numero massimo di prenotazioni alla settimana per utente nell'intero sistema è";
 $vocab["max_per_month_global"]    = "Il numero massimo di prenotazioni al mese per utente nell'intero sistema è";
@@ -323,7 +323,6 @@ $vocab["privacy_status"]        = "Stato privacy";
 $vocab["search_criteria"]       = "Criteri di ricerca";
 $vocab["presentation_options"]  = "Opzioni di presentazione";
 $vocab["delete_entries"]        = "Cancella valori";
-$vocab["delete_entries_warning"] = "ATENZIONE!  Questa operazione cancellerà tutti i valori che soddisfano " .
 $vocab["delete_entries_failed"] = "Non è stato possibile cancellare i valori.";
 
 // Used in admin.php
@@ -434,8 +433,7 @@ $vocab["about_mrbs"]         = "Circa MRBS";
 $vocab["database"]           = "Database";
 $vocab["system"]             = "Sistema operativo";
 $vocab["servertime"]         = "Ora del Server";
-$vocab["please_contact"]     = "Contatta ";
-$vocab["for_any_questions"]  = "per qualsiasi altra domanda.";
+$vocab["please_contact"]     = "Contatta %s per qualsiasi altra domanda.";
 
 // Used in import.php
 $vocab["import_icalendar"]            = "Importa un file iCalendar";
@@ -452,7 +450,7 @@ $vocab["import_bzip2"]                = "bzip2 file";
 $vocab["file_name"]                   = "File";
 $vocab["import"]                      = "Importa";
 $vocab["upload_failed"]               = "Invio fallito";
-$vocab["max_allowed_file_size"]       = "La massima dimensione file permessa è";
+$vocab["max_allowed_file_size"]       = "La massima dimensione file permessa è %s";
 $vocab["no_file"]                     = "Nessun file inviato";
 $vocab["could_not_process"]           = "Importazione fallita: non è stato possibile processare il file";
 $vocab["badly_formed_ics"]            = "File VCALENDAR in formato errato";

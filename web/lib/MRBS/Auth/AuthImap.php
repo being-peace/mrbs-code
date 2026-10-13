@@ -1,40 +1,29 @@
 <?php
 namespace MRBS\Auth;
 
-/*
- * Authentication scheme that uses IMAP as the source for user
- * authentication.
+/**
+ * Authentication scheme that uses IMAP as the source for user authentication.
  *
- * To use this authentication scheme set the following
- * things in config.inc.php:
+ * To use this authentication scheme, set the following things in config.inc.php:
  *
- * $auth["realm"] = "MRBS";    // Or any other string
- * $auth["type"]  = "imap";
+ *     $auth["realm"] = "MRBS"; // Or any other string
+ *     $auth["type"] = "imap";
  *
  * Then, you may configure admin users:
  *
- * $auth["admin"][] = "imapuser1";
- * $auth["admin"][] = "imapuser2";
+ *     $auth["admin"][] = "imapuser1";
+ *     $auth["admin"][] = "imapuser2";
  */
-
 class AuthImap extends Auth
 {
-  /* validateUser($user, $pass)
-   *
-   * Checks if the specified username/password pair are valid
-   *
-   * $user  - The user name
-   * $pass  - The password
-   *
-   * Returns:
-   *   false    - The pair are invalid or do not exist
-   *   string   - The validated username
-   */
-  public function validateUser(?string $user, ?string $pass)
+  public function validateUser(
+    #[\SensitiveParameter]
+    ?string $user,
+    #[\SensitiveParameter]
+    ?string $pass)
   {
     global $imap_host, $imap_port;
 
-    $all_imap_hosts = array();
     $all_imap_ports = array();
 
     // Check if we do not have a username/password
@@ -110,10 +99,19 @@ class AuthImap extends Auth
   }
 
 
-  // Checks whether validation of a user by email address is possible and allowed.
+  /**
+   */
   public function canValidateByEmail() : bool
   {
     return true;
+  }
+
+
+  /**
+   */
+  public function canValidateByUsername() : bool
+  {
+    return false;
   }
 
 

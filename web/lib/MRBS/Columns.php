@@ -1,23 +1,62 @@
 <?php
+declare(strict_types=1);
 namespace MRBS;
 
 use Countable;
 use Iterator;
 
 // Holds information about table columns
+// Implemented as a singleton class for performance reasons: it is
+// expensive getting the field info in the constructor.
 class Columns implements Countable, Iterator
 {
 
+  private static $instances = array();
   private $data;
   private $index = 0;
   private $table_name;
 
 
-  public function __construct($table_name)
+  private function __construct($table_name)
   {
-    $this->$table_name = $table_name;
+    assert(version_compare(MRBS_MIN_PHP_VERSION, '7.4.0', '<'), "The __wakeup() method is now redundant.");
+    $this->table_name = $table_name;
     // Get the column info
     $this->data = db()->field_info($table_name);
+  }
+
+
+  private function __clone()
+  {
+  }
+
+
+  public function __unserialize(array $data) : void
+  {
+    // __unserialize() must have public visibility
+    throw new \Exception("Cannot unserialize a singleton.");
+  }
+
+
+  // __wakeup() is deprecated from PHP 8.5.
+  // "The __wakeup() serialization magic method has been deprecated. Implement __unserialize()
+  // instead (or in addition, if support for old PHP versions is necessary)".
+  // __unserialize() is only available from PHP 7.4.0
+  public function __wakeup()
+  {
+    // __wakeup() must have public visibility
+    throw new \Exception("Cannot unserialize a singleton.");
+  }
+
+
+  public static function getInstance(string $table_name) : Columns
+  {
+    if (!isset(self::$instances[$table_name]))
+    {
+      self::$instances[$table_name] = new self($table_name);
+    }
+
+    return self::$instances[$table_name];
   }
 
 
@@ -41,7 +80,7 @@ class Columns implements Countable, Iterator
   }
 
 
-  public function getColumnByName($name) : ?Column
+  public function getColumnByName(string $name) : ?Column
   {
     foreach ($this as $column)
     {
@@ -60,6 +99,9 @@ class Columns implements Countable, Iterator
     $info = $this->data[$this->index];
     $column = new Column($this->table_name, $info['name']);
     $column->setLength($info['length']);
+    $column->setDefault($info['default']);
+    $column->setIsNullable($info['is_nullable']);
+    $column->setType($info['type']);
 
     switch ($info['nature'])
     {
@@ -77,6 +119,9 @@ class Columns implements Countable, Iterator
         break;
       case 'integer':
         $column->setNature(Column::NATURE_INTEGER);
+        break;
+      case 'json':
+        $column->setNature(Column::NATURE_JSON);
         break;
       case 'real':
         $column->setNature(Column::NATURE_REAL);
@@ -116,7 +161,7 @@ class Columns implements Countable, Iterator
   }
 
 
-  public function count(): int
+  public function count() : int
   {
     return count($this->data);
   }

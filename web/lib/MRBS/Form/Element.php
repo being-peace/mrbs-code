@@ -1,5 +1,5 @@
 <?php
-
+declare(strict_types=1);
 namespace MRBS\Form;
 
 // This is a limited implementation of the HTML5 DOM and is optimised for use by
@@ -16,29 +16,32 @@ namespace MRBS\Form;
 // If structures like these are required ten they can usually be achieved by wrapping the raw
 // text nodes in a <span>.
 
+use function MRBS\escape_html;
+use function MRBS\is_assoc;
+
 class Element
 {
-  private $tag = null;
-  private $self_closing = false;
+  private $tag;
+  private $self_closing;
   private $attributes = array();
   private $text = null;
   private $raw = false;
   private $text_at_start = false;
-  private $elements = array();
+  private $elements = [];
   private $next = null;
   private $prev = null;
 
 
-  public function __construct($tag, $self_closing=false)
+  public function __construct(string $tag, bool $self_closing=false)
   {
     $this->tag = $tag;
     $this->self_closing = $self_closing;
   }
 
 
-  // If $raw is true then the text will not be put through htmlspecialchars().  Only to
+  // If $raw is true then the text will not be put through escape_html().  Only to
   // be used for trusted text.
-  public function setText($text, $text_at_start=false, $raw=false)
+  public function setText(string $text, bool $text_at_start=false, bool $raw=false) : Element
   {
     if ($this->self_closing)
     {
@@ -53,7 +56,7 @@ class Element
   }
 
 
-  public function getAttribute($name)
+  public function getAttribute(string $name)
   {
     return (isset($this->attributes[$name])) ? $this->attributes[$name] : null;
   }
@@ -61,14 +64,14 @@ class Element
 
   // A value of true allows for the setting of boolean attributes such as
   // 'required' and 'disabled'
-  public function setAttribute($name, $value=true)
+  public function setAttribute(string $name, $value=true) : Element
   {
     $this->attributes[$name] = $value;
     return $this;
   }
 
 
-  public function setAttributes(array $attributes)
+  public function setAttributes(array $attributes) : Element
   {
     foreach ($attributes as $name => $value)
     {
@@ -79,40 +82,40 @@ class Element
   }
 
 
-  public function removeAttribute($name)
+  public function removeAttribute(string $name) : Element
   {
     unset($this->attributes[$name]);
     return $this;
   }
 
 
-  public function getElement($key)
+  public function getElement(string $key) : Element
   {
     return $this->elements[$key];
   }
 
 
-  public function setElement($key, Element $element)
+  public function setElement(string $key, Element $element) : Element
   {
     $this->elements[$key] = $element;
     return $this;
   }
 
 
-  public function getElements()
+  public function getElements() : array
   {
     return $this->elements;
   }
 
 
-  public function setElements(array $elements)
+  public function setElements(array $elements) : Element
   {
     $this->elements = $elements;
     return $this;
   }
 
 
-  public function addElement(Element $element=null, $key=null)
+  public function addElement(?Element $element=null, ?string $key=null) : Element
   {
     if (isset($element))
     {
@@ -130,7 +133,7 @@ class Element
   }
 
 
-  public function addElements(array $elements)
+  public function addElements(array $elements) : Element
   {
     foreach ($elements as $element)
     {
@@ -140,14 +143,14 @@ class Element
   }
 
 
-  public function removeElement($key)
+  public function removeElement(string $key) : Element
   {
     unset($this->elements[$key]);
     return $this;
   }
 
 
-  public function next(Element $element=null)
+  public function next(?Element $element=null) : ?Element
   {
     if (isset($element))
     {
@@ -165,7 +168,7 @@ class Element
   }
 
 
-  public function prev(Element $element=null)
+  public function prev(?Element $element=null): ?Element
   {
     if (isset($element))
     {
@@ -183,13 +186,16 @@ class Element
   }
 
 
-  public function addClass($class)
+  public function addClass(string $class) : Element
   {
     $classes = $this->getAttribute('class');
 
     $classes = (isset($classes)) ? explode(' ', $classes) : array();
-    $classes[] = $class;
-    $this->setAttribute('class', implode(' ', $classes));
+    if (!in_array($class, $classes))
+    {
+      $classes[] = $class;
+      $this->setAttribute('class', implode(' ', $classes));
+    }
 
     return $this;
   }
@@ -209,7 +215,8 @@ class Element
   //                      true    treat as an associative array
   //                      false   treat as a simple array
   //                      null    auto-detect
-  public function addSelectOptions(array $options, $selected=null, $associative=null)
+  //    $for_datalist Whether the options are intended for use in a <datalist>.
+  public function addSelectOptions(array $options, $selected=null, ?bool $associative=null, bool $for_datalist=false) : Element
   {
     // Trivial case
     if (empty($options))
@@ -219,7 +226,7 @@ class Element
 
     if (!isset($associative))
     {
-      $associative = \MRBS\is_assoc($options);
+      $associative = is_assoc($options);
     }
 
     // It's possible to have multiple options selected
@@ -232,6 +239,10 @@ class Element
     // If two-dimensional then we need to use <optgroup>s.
     if (is_array(reset($options)))   // cannot use $options[0] because $options may be associative
     {
+      if ($for_datalist)
+      {
+        throw new \InvalidArgumentException("Datalists cannot have <optgroup> elements.");
+      }
       foreach ($options as $group => $group_options)
       {
         $optgroup = new ElementOptgroup();
@@ -242,23 +253,53 @@ class Element
     }
     else
     {
-      foreach ($options as $key => $value)
+      foreach ($options as $key => $text)
       {
         $option = new ElementOption();
 
-        if ($associative)
+        // We need to be careful about strings with multiple consecutive spaces in them.  If we have a <select> element
+        // with simple options of the form <option>Joe  Smith</option>, then the text "Joe  Smith" will be contracted
+        // to "Joe Smith".  This means that (a) it will look wrong on the form and (b) the wrong value will be passed
+        // through to the form handler.  One way of getting round this would be to substitute the extra spaces with
+        // non-breaking space characters.  However, although this will now look correct on the form, the value that is
+        // passed through to the form handler will contain non-breaking spaces instead of ordinary spaces.  A query
+        // using this value to find a row in the database will rely on the database engine treating ordinary and non-
+        // breaking spaces as equivalent. While this will be true for many collations, it won't always be so.
+        //
+        // The solution is to place the text as is in the value attribute, but to replace the spaces in the text node
+        // with non-breaking spaces, eg <option value="Joe  Smith">Joe  Smith</option>.  Because extra spaces in
+        // attributes are preserved, the correct string will be passed through to the form handler.  And because
+        // there are now non-breaking spaces in the text node, the string is displayed properly in the browser.  If the
+        // options are in the form of an associative array with values and text, then the value will be used for the
+        // value attribute and the text can have its spaces replaced.
+        //
+        // This solution doesn't work though for <datalist> elements, at least not when using Chrome or Safari.
+        // According to https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/datalist "Each <option>
+        // element should have a value attribute, which represents a suggestion to be entered into the input. It can
+        // also have a label attribute, or, missing that, some text content, which may be displayed by the browser
+        // instead of value (Firefox), or in addition to value (Chrome and Safari, as supplemental text). The exact
+        // content of the drop-down menu depends on the browser, but when clicked, content entered into control field
+        // will always come from the value attribute."  In other words, if the value and text are different - even in
+        // the type of space character used - then, when using Chrome and Safari, they are both displayed by the
+        // browser, which looks a little odd, when they are essentially the same string.
+        //
+        // So for <datalist> elements, which are never associative anyway, we just use the value attribute and have an
+        // empty text node, eg <option value="Joe  Smith"></option>.
+        //
+        // See also https://github.com/meeting-room-booking-system/mrbs-code/issues/3871 and
+        // https://stackoverflow.com/questions/79629259/does-mysql-distinguish-betwen-ordinary-and-non-breaking-spaces-in-a-query
+
+        $value = ($associative) ? $key : $text;
+        $option->setAttribute('value', $value);
+
+        if (!$for_datalist || $associative)
         {
-          $option->setAttribute('value', $key);
+          // If it's a string replace the second and subsequent spaces with non-breaking spaces
+          $text = (is_string($text)) ? preg_replace('/(?<= ) /', "\xc2\xa0", $text) : strval($text);
+          $option->setText($text);
         }
 
-        $option->setText($value);
-
-        if (!$associative)
-        {
-          $key = $value;
-        }
-
-        if (in_array($key, $selected))
+        if (!$for_datalist && in_array($value, $selected))
         {
           $option->setAttribute('selected');
         }
@@ -272,7 +313,7 @@ class Element
 
 
   // $checked is either a scalar or an array of keys that are checked
-  public function addCheckboxOptions(array $options, $name, $checked=null, $associative=null, $disabled=false)
+  public function addCheckboxOptions(array $options, string $name, $checked=null, $associative=null, bool $disabled=false): Element
   {
     // Trivial case
     if (empty($options))
@@ -287,7 +328,7 @@ class Element
 
     if (!isset($associative))
     {
-      $associative = \MRBS\is_assoc($options);
+      $associative = is_assoc($options);
     }
 
     foreach ($options as $key => $value)
@@ -310,7 +351,7 @@ class Element
       }
 
       $label = new ElementLabel();
-      $label->setText($value)
+      $label->setText(strval($value))
             ->addElement($checkbox);
 
       $this->addElement($label);
@@ -320,7 +361,7 @@ class Element
   }
 
 
-  public function addRadioOptions(array $options, $name, $checked=null, $associative=null, $disabled=false)
+  public function addRadioOptions(array $options, string $name, $checked=null, $associative=null, bool $disabled=false): Element
   {
     // Trivial case
     if (empty($options))
@@ -330,7 +371,7 @@ class Element
 
     if (!isset($associative))
     {
-      $associative = \MRBS\is_assoc($options);
+      $associative = is_assoc($options);
     }
 
     foreach ($options as $key => $value)
@@ -348,7 +389,7 @@ class Element
         $radio->setAttribute('checked');
       }
       $label = new ElementLabel();
-      $label->setText($value)
+      $label->setText(strval($value))
             ->addElement($radio);
 
       $this->addElement($label);
@@ -358,7 +399,7 @@ class Element
   }
 
 
-  public function render()
+  public function render() : void
   {
     echo $this->toHTML();
   }
@@ -369,7 +410,7 @@ class Element
   // closing tags.   This is useful for structures such as
   // <label><input>text</label> where whitespace after the <input> tag would
   // affect what the browser displays on the screen.
-  public function toHTML($no_whitespace=false)
+  public function toHTML(bool $no_whitespace=false): string
   {
     $html = "";
 
@@ -394,10 +435,10 @@ class Element
       }
 
       $html .= " $key";
-      if (isset($value) && ($value !== true))
+      if ($value !== true)
       {
         // boolean attributes, eg 'required', don't need a value
-        $html .= '="' . htmlspecialchars($value) . '"';
+        $html .= '="' . escape_html($value) . '"';
       }
     }
 
@@ -446,9 +487,9 @@ class Element
   }
 
 
-  private static function escapeText($text, $raw=false)
+  private static function escapeText($text, bool $raw=false)
   {
-    return ($raw) ? $text : htmlspecialchars($text);
+    return ($raw) ? $text : escape_html($text);
   }
 
 }

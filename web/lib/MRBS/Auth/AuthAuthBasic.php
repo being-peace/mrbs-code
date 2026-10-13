@@ -1,40 +1,29 @@
 <?php
 namespace MRBS\Auth;
 
-/*
- * Authentication scheme that uses an Apache "auth basic" password file
- * for user authentication.
+/**
+ * Authentication scheme that uses an Apache "auth basic" password file for user authentication.
  *
- * To use this authentication scheme set the following
- * things in config.inc.php:
+ * To use this authentication scheme, set the following things in config.inc.php:
  *
- * $auth["type"]   = "auth_basic";
- * $auth["auth_basic"]["passwd_file] = "/etc/httpd/htpasswd"; // Example
- * $auth["auth_basic"]["mode"] = "des"; // The mode of encryption used in
- *                                      // the file. Must be one of:
- *                                      // 'des', 'sha' or 'md5'.
+ *     $auth["type"] = "auth_basic";
+ *     $auth["auth_basic"]["passwd_file] = "/etc/httpd/htpasswd"; // Example
+ *     $auth["auth_basic"]["mode"] = "des"; // The mode of encryption used in
+ *                                          // the file. Must be one of:
+ *                                          // 'des', 'sha' or 'md5'.
  *
  * Then, you may configure admin users:
  *
- * $auth["admin"][] = "username1";
- * $auth["admin"][] = "username2";
- *
+ *     $auth["admin"][] = "username1";
+ *     $auth["admin"][] = "username2";
  */
-
 class AuthAuthBasic extends Auth
 {
-  /* validateUser($user, $pass)
-   *
-   * Checks if the specified username/password pair are valid
-   *
-   * $user  - The user name
-   * $pass  - The password
-   *
-   * Returns:
-   *   false    - The pair are invalid or do not exist
-   *   string   - The validated username
-   */
-  public function validateUser(?string $user, ?string $pass)
+  public function validateUser(
+    #[\SensitiveParameter]
+    ?string $user,
+    #[\SensitiveParameter]
+    ?string $pass)
   {
     global $auth;
 

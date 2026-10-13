@@ -1,28 +1,31 @@
 <?php
+declare(strict_types=1);
 namespace MRBS\Auth;
 
-use \MRBS\User;
+use MRBS\Language;
+use MRBS\User;
+use function MRBS\format_compound_name;
 use function MRBS\get_registrants;
 use function MRBS\get_sortable_name;
 use function MRBS\get_vocab;
+use function MRBS\in_arrayi;
 use function MRBS\session;
-use function MRBS\strcasecmp_locale;
 
 
 abstract class Auth
 {
-  /* validateUser($user, $pass)
+  protected $getDisplayNamesAtOnce = true;
+
+  /**
+   * Checks if the specified username/password pair are valid.
    *
-   * Checks if the specified username/password pair are valid
-   *
-   * $user  - The user name
-   * $pass  - The password
-   *
-   * Returns:
-   *   false    - The pair are invalid or do not exist
-   *   string   - The validated username
+   * @return false|string the validated username or false
    */
-  abstract public function validateUser(?string $user, ?string $pass);
+  abstract public function validateUser(
+    #[\SensitiveParameter]
+    ?string $user,
+    #[\SensitiveParameter]
+    ?string $pass);
 
 
   protected function getUserFresh(string $username) : ?User
@@ -78,33 +81,150 @@ abstract class Auth
   }
 
 
-  // Checks whether validation of a user by email address is possible and allowed.
+  /**
+   * Returns a username given an email address.
+   *
+   * @return string|null The username (or the first found if two or more users share the same email address), or
+   *                     NULL if no user is found.
+   */
+  public function getUsernameByEmail(string $email) : ?string
+  {
+    global $mail_settings;
+
+    // Default: return the email address, unless we're constructing email
+    // addresses by adding a domain name onto the username.  In which case,
+    // strip off the domain name and then add on any necessary suffix.
+    // This should be the inverse of getDefaultEmail().
+    $result = $email;
+
+    if (isset($mail_settings['domain']) && ($mail_settings['domain'] !== ''))
+    {
+      $at_domain = '@' . self::trimDomain($mail_settings['domain']);
+      if (str_ends_with($email, $at_domain))
+      {
+        // Strip the @domain
+        $result = str_replace($at_domain, '', $result);
+        // And add on the suffix if there is one
+        if (isset($mail_settings['username_suffix']))
+        {
+          $result .= $mail_settings['username_suffix'];
+        }
+      }
+    }
+
+    return $result;
+  }
+
+
+  public function getDisplayName(?string $username) : ?string
+  {
+    global $get_display_names_all_at_once;
+
+    static $display_names = null;  // Cache for performance
+
+    // Easy case 1: $username is null
+    if (!isset($username))
+    {
+      return null;
+    }
+
+    // Easy case 2: it's the current user
+    $mrbs_user = session()->getCurrentUser();
+    if (isset($mrbs_user) && ($mrbs_user->username === $username))
+    {
+      return $mrbs_user->display_name;
+    }
+
+    // If we can (and want to) then get all the usernames at the same time.  It's
+    // much faster than getting them one at a time when they are stored externally.
+    // Check to see if $display_names is set before getting the usernames, so that
+    // if getUsernames returns false we don't keep on trying it for every username
+    // (the else block will set $display_names).
+    if ($get_display_names_all_at_once &&
+        method_exists($this, 'getUsernames') &&
+        !isset($display_names) &&
+        (false !== ($usernames = $this->getUsernames())))
+    {
+      $display_names = array_column($usernames, 'display_name', 'username');
+    }
+    // Otherwise just get them one at a time
+    else
+    {
+      if (!isset($display_names[$username]))
+      {
+        $user = $this->getUser($username);
+        $display_names[$username] = (isset($user)) ? $user->display_name : $username;
+      }
+    }
+
+    if (isset($display_names[$username]) && ($display_names[$username] !== ''))
+    {
+      return $display_names[$username];
+    }
+
+    return $username;
+  }
+
+
+  /**
+   * Checks whether the authentication type allows the creation of new users.
+   *
+   * This will normally return false if users are managed elsewhere (e.g. on
+   * an external database, or on an LDAP server).
+   */
+  public function canCreateUsers() : bool
+  {
+    return false;
+  }
+
+
+  /**
+   * Checks whether validation of a user by email address is possible and allowed.
+   */
   public function canValidateByEmail() : bool
   {
     return false;
   }
 
 
-  // Checks whether the method has a password reset facility
+  /**
+   * Checks whether validation of a user by username is possible and allowed.
+   */
+  public function canValidateByUsername() : bool
+  {
+    return true;
+  }
+
+
+  /**
+   * Checks whether the method has a password reset facility
+   */
   public function canResetPassword() : bool
   {
     return false;
   }
 
 
-  // Checks whether the password by reset by supplying an email address
+  /**
+   * Checks whether the password can be reset by supplying an email address
+   */
   public function canResetByEmail() : bool
   {
     return false;
   }
 
 
-  // Validates that the password conforms to the password policy
-  // (Ideally this function should also be matched by client-side
-  // validation, but unfortunately JavaScript's native support for Unicode
-  // pattern matching is very limited.   Would need to be implemented using
-  // an add-in library).
-  public function validatePassword(string $password) : bool
+  /**
+   * Validates that the password conforms to the password policy.
+   *
+   * Ideally this function should also be matched by client-side
+   * validation, but unfortunately JavaScript's native support for Unicode
+   * pattern matching is very limited.   Would need to be implemented using
+   * an add-in library.
+   */
+  public function validatePassword(
+    #[\SensitiveParameter]
+    string $password) : bool
   {
     global $pwd_policy;
 
@@ -123,7 +243,7 @@ abstract class Auth
         switch($rule)
         {
           case 'length':
-            if (\MRBS\utf8_strlen($password) < $pwd_policy[$rule])
+            if (mb_strlen($password) < $value)
             {
               return false;
             }
@@ -133,7 +253,7 @@ abstract class Auth
             $pattern[$rule] .= 'u';
 
             $n = preg_match_all($pattern[$rule], $password, $matches);
-            if (($n === false) || ($n < $pwd_policy[$rule]))
+            if (($n === false) || ($n < $value))
             {
               return false;
             }
@@ -147,8 +267,12 @@ abstract class Auth
   }
 
 
-  // Returns an array of registrants' display names
-  public function getRegistrantsDisplayNames (array $entry, bool $with_registered_by=false) : array
+  /**
+   * Returns an array of registrants' display names
+   *
+   * @return string[]
+   */
+  public function getRegistrantsDisplayNames (array $entry, bool $with_registered_by=false, bool $with_registrant_username=false) : array
   {
     $display_names = array();
 
@@ -156,7 +280,7 @@ abstract class Auth
     // or if we know there are definitely some
     if (!isset($entry['n_registered']) || ($entry['n_registered'] > 0))
     {
-      $display_names = $this->getRegistrantsDisplayNamesUnsorted($entry['id'], $with_registered_by);
+      $display_names = $this->getRegistrantsDisplayNamesUnsorted($entry['id'], $with_registered_by, $with_registrant_username);
       usort($display_names, 'MRBS\compare_display_names');
     }
 
@@ -164,34 +288,52 @@ abstract class Auth
   }
 
 
-  protected function getRegistrantsDisplayNamesUnsorted(int $id, bool $with_registered_by) : array
+  /**
+   * @return string[]
+   */
+  protected function getRegistrantsDisplayNamesUnsorted(int $id, bool $with_registered_by, bool $with_registrant_username) : array
   {
     $display_names = array();
     $registrants = get_registrants($id, false);
 
     foreach ($registrants as $registrant)
     {
-      $registrant_user = $this->getUser($registrant['username']);
-      $display_name = (isset($registrant_user)) ? $registrant_user->display_name : $registrant['username'];
+      $display_name = $this->getDisplayName($registrant['username']);
       // Add in the name of the person who registered this user, if required and if different.
       if ($with_registered_by &&
-          isset($registrant['create_by']) &&
-          ($registrant['create_by'] !== $registrant['username']))
+        isset($registrant['create_by']) &&
+        ($registrant['create_by'] !== $registrant['username']))
       {
-        $registered_by = $this->getUser($registrant['create_by']);
-        $display_name = get_vocab("registrant_registered_by", $display_name, $registered_by->display_name);
+        if ($with_registrant_username)
+        {
+          $display_names[] = get_vocab("registrant_username_and_registered_by",
+                                       $registrant['username'],
+                                       $display_name,
+                                       $this->getDisplayName($registrant['create_by']));
+        }
+        else
+        {
+          $display_names[] = get_vocab("registrant_registered_by",
+                                       $display_name,
+                                       $this->getDisplayName($registrant['create_by']));
+        }
       }
-      $display_names[] = $display_name;
+      else
+      {
+        $display_names[] = ($with_registrant_username) ? format_compound_name($registrant['username'], $display_name) : $display_name;
+      }
     }
 
     return $display_names;
   }
 
 
-  // Gets the level from the $auth['admin'] array in the config file
+  /**
+   * Gets the level from the $auth['admin'] array in the config file
+   */
   protected function getDefaultLevel(?string $username) : int
   {
-    global $auth;
+    global $auth, $max_level;
 
     // User not logged in, user level '0'
     if(!isset($username))
@@ -199,24 +341,14 @@ abstract class Auth
       return 0;
     }
 
-    // Check whether the user is an admin
-    if (isset($auth['admin']))
-    {
-      foreach ($auth['admin'] as $admin)
-      {
-        if (strcasecmp($username, $admin) === 0)
-        {
-          return 2;
-        }
-      }
-    }
-
-    // Everybody else is access level '1'
-    return 1;
+    // Check whether the user is an admin; if not they are level 1.
+    return (isset($auth['admin']) && in_arrayi($username, $auth['admin'])) ? $max_level : 1;
   }
 
 
-  // Gets the default email address using config file settings
+  /**
+   * Gets the default email address using config file settings
+   */
   protected function getDefaultEmail(?string $username) : string
   {
     global $mail_settings;
@@ -241,45 +373,76 @@ abstract class Auth
     // Add on the domain, if there is one
     if (isset($mail_settings['domain']) && ($mail_settings['domain'] !== ''))
     {
-      // Trim any leading '@' character. Older versions of MRBS required the '@' character
-      // to be included in $mail_settings['domain'], and we still allow this for backwards
-      // compatibility.
-      $domain = ltrim($mail_settings['domain'], '@');
-      $email .= '@' . $domain;
+      $email .= '@' . self::trimDomain($mail_settings['domain']);
     }
 
     return $email;
   }
 
 
-  // Callback function for comparing two users, indexed by 'username' and 'display_name'.
-  // Compares first by 'display_name' and then by 'username'
+  /**
+   * Trim any leading '@' character.
+   *
+   * Older versions of MRBS required the '@' character to be included in $mail_settings['domain'],
+   * and we still allow this for backwards compatibility.
+   */
+  private static function trimDomain(string $domain) : string
+  {
+    return ltrim($domain, '@');
+  }
+
+
+  /**
+   * Callback function for comparing two users.
+   *
+   * Compares first by 'display_name' and then by 'username'.
+   *
+   * @param array{username: string, display_name: string} $user1
+   * @param array{username: string, display_name: string} $user2
+   */
   private static function compareUsers(array $user1, array $user2) : int
   {
     $display_name1 = get_sortable_name($user1['display_name']);
     $display_name2 = get_sortable_name($user2['display_name']);
-    $display_name_comparison = strcasecmp_locale($display_name1, $display_name2);
+    // Provide fallbacks just in case the display names are NULL or empty
+    $display_name1 = (isset($display_name1) && ($display_name1 !== '')) ? $display_name1 : $user1['username'];
+    $display_name2 = (isset($display_name2) && ($display_name2 !== '')) ? $display_name2 : $user2['username'];
+
+    $collator = new \Collator(Language::getInstance()->getWebLocale());
+    $collator->setStrength(\Collator::SECONDARY);  // Case-insensitive, but accent-sensitive
+    $display_name_comparison = $collator->compare($display_name1, $display_name2);
 
     if ($display_name_comparison === 0)
     {
-      return strcasecmp_locale($user1['username'], $user2['username']);
+      return $collator->compare($user1['username'], $user2['username']);
     }
 
     return $display_name_comparison;
   }
 
 
-  // Sorts an array of users indexed by 'username' and 'display_name', eg the
-  // output of getUsernames().   Sorts by display_name then username.
+  /**
+   * Sorts an array of users indexed by 'username' and 'display_name', eg the
+   * output of getUsernames().
+   *
+   * Sorts by display_name then username.
+   *
+   * @param array{array{username: string, display_name: string}} $users
+   * @return void
+   */
   protected static function sortUsers(array &$users) : void
   {
     usort($users, [__CLASS__, 'compareUsers']);
   }
 
 
-  // Check we've got the right session scheme for the type.
-  // To be called for those authentication types which require the same
-  // session scheme.
+  /**
+   * Check we've got the right session scheme for the type.
+   *
+   * To be called for those authentication types which require the same session scheme.
+   *
+   * @return void|never
+   */
   protected function checkSessionMatchesType()
   {
     global $auth;
@@ -290,5 +453,21 @@ abstract class Auth
       $message = "MRBS configuration error: $class needs \$auth['session'] set to '" . $auth['type'] . "'";
       die($message);
     }
+  }
+
+
+  /**
+   * Writes the debug message to the error log together with the calling method and line number.
+   * It assumes that it has been called by a debug method.
+   */
+  protected static function logDebugMessage(string $message) : void
+  {
+    // Need to go three levels back to get the real calling method.
+    list( , $called, $caller) = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 3);
+    error_log(
+        "[MRBS DEBUG] " .
+        $caller['class'] . $caller['type'] . $caller['function'] . '(' . $called['line'] . ')' .
+        ": $message"
+      );
   }
 }

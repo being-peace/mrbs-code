@@ -1,7 +1,8 @@
 <?php
+declare(strict_types=1);
 namespace MRBS;
 
-use MRBS\Form\Form;
+use MRBS\Errors\Errors;
 use MRBS\Form\ElementFieldset;
 use MRBS\Form\ElementInputSubmit;
 use MRBS\Form\ElementP;
@@ -10,6 +11,7 @@ use MRBS\Form\FieldInputPassword;
 use MRBS\Form\FieldInputSubmit;
 use MRBS\Form\FieldInputText;
 use MRBS\Form\FieldSelect;
+use MRBS\Form\Form;
 
 /*****************************************************************************\
 *                                                                            *
@@ -43,9 +45,9 @@ use MRBS\Form\FieldSelect;
 
 require "defaultincludes.inc";
 
-if ($auth['type'] != 'db')
+if (!auth()->canCreateUsers())
 {
-  // You shouldn't be here unless you're using 'db' authentication
+  // You shouldn't be here unless you can create users
   location_header('index.php');
 }
 
@@ -102,7 +104,7 @@ function can_view_user($target)
 
   return (!$auth['only_admin_can_see_other_users']  ||
           ($mrbs_user->level >= $min_user_viewing_level) ||
-          (strcasecmp($mrbs_user->username, $target) === 0));
+          (compare_usernames($mrbs_user->username, $target) === 0));
 }
 
 
@@ -111,35 +113,7 @@ function can_edit_user($target)
 {
   $mrbs_user = session()->getCurrentUser();
 
-  return (is_user_admin() || (isset($mrbs_user) && strcasecmp($mrbs_user->username, $target) === 0));
-}
-
-
-// Get the type that should be used with get_form_var() for
-// a field which is a member of the array returned by get_field_info()
-function get_form_var_type($field)
-{
-  // "Level" is an exception because we've forced the value to be a string
-  // so that it can be used in an associative array
-  if ($field['name'] == 'level')
-  {
-    return 'string';
-  }
-  switch($field['nature'])
-  {
-    case 'character':
-      $type = 'string';
-      break;
-    case 'integer':
-      // Smallints and tinyints are considered to be booleans
-      $type = (isset($field['length']) && ($field['length'] <= 2)) ? 'string' : 'int';
-      break;
-    // We can only really deal with the types above at the moment
-    default:
-      $type = 'string';
-      break;
-  }
-  return $type;
+  return (is_user_admin() || (isset($mrbs_user) && compare_usernames($mrbs_user->username, $target) === 0));
 }
 
 
@@ -159,9 +133,8 @@ function output_row($row)
   // You can only edit a user if you have sufficient admin rights, or else if that user is yourself
   if (can_edit_user($row['name']))
   {
-    $form = new Form();
-    $form->setAttributes(array('method' => 'post',
-                               'action' => multisite(this_page())));
+    $form = new Form(Form::METHOD_POST);
+    $form->setAttributes(array('action' => multisite(this_page())));
     $form->addHiddenInput('id', $row['id']);
     $submit = new ElementInputSubmit();
     $submit->setAttributes(array('class' => 'link',
@@ -172,15 +145,15 @@ function output_row($row)
   }
   else
   {
-    $display_name_value = "<span class=\"normal\">" . htmlspecialchars($row['display_name']) . "</span>";
+    $display_name_value = "<span class=\"normal\">" . escape_html($row['display_name']) . "</span>";
   }
 
   $sortname = get_sortable_name($row['display_name']);
-  $values[] = '<span title="' . htmlspecialchars($sortname) . '"></span>' . $display_name_value;
+  // TODO: move the data-order attribute up into the <td> and get rid of the <span>
+  $values[] = '<span data-order="' . escape_html($sortname) . '"></span>' . $display_name_value;
 
   // Then the username
-  $name_value = "<span class=\"normal\">" . htmlspecialchars($row['name']) . "</span>";
-  $values[] = '<span title="' . htmlspecialchars($row['name']) . '"></span>' . $name_value;
+  $values[] = '<span class="normal">' . escape_html($row['name']) . '</span>';
 
   // Other columns
   foreach ($fields as $field)
@@ -204,31 +177,35 @@ function output_row($row)
         case 'level':
           // the level field contains a code and we want to display a string
           // (but we put the code in a span for sorting)
-          $values[] = "<span title=\"$col_value\"></span>" .
+          $values[] = '<span title="' . escape_html($col_value) . '"></span>' .
                       "<div class=\"string\">" . get_vocab("level_$col_value") . "</div>";
           break;
         case 'email':
           // we don't want to truncate the email address
-          $escaped_email = htmlspecialchars($col_value);
-          $values[] = "<div class=\"string\">\n" .
-                      "<a href=\"mailto:$escaped_email\">$escaped_email</a>\n" .
-                      "</div>\n";
+          if (isset($col_value) && ($col_value !== ''))
+          {
+            $escaped_email = escape_html($col_value);
+            $values[] = "<div class=\"string\">\n" .
+                        "<a href=\"mailto:$escaped_email\">$escaped_email</a>\n" .
+                        "</div>\n";
+          }
+          else
+          {
+            $values[] = '';
+          }
           break;
         case 'timestamp':
-          // Convert the SQL timestamp into a time value and back into a localised string and
-          // put the UNIX timestamp in a span so that the JavaScript can sort it properly.
-          $unix_timestamp = (isset($col_value)) ? strtotime($col_value) : 0;
-          if (($unix_timestamp === false) || ($unix_timestamp < 0))
-          {
-            // To cater for timestamps before the start of the Unix Epoch
-            $unix_timestamp = 0;
-          }
-          $values[] = "<span title=\"$unix_timestamp\"></span>" .
-                      (($unix_timestamp) ? time_date_string($unix_timestamp) : '');
-          break;
+          // Use the 'last_updated' value because it will have been converted
+          // from 'timestamp' using the correct timezone, ie the timezone of
+          // the database server.
+          $col_value = $row['last_updated'];
+          // Fall through
         case 'last_login':
-          $values[] = "<span title=\"$col_value\"></span>" .
-                      (($col_value) ? time_date_string($col_value) : '');
+          // Put the UNIX timestamp in a span so that the JavaScript can sort it properly.
+          // If there isn't a date then put '0' in the title, otherwise DataTables throws
+          // a TypeError if you try and sort the column.
+          $values[] = '<span title="' . (($col_value) ? escape_html($col_value) : '0') . '"></span>' .
+                      (($col_value) ? escape_html(time_date_string($col_value)) : '');
           break;
         default:
           // Where there's an associative array of options, display
@@ -236,7 +213,7 @@ function output_row($row)
           if (isset($select_options["users.$key"]) &&
               is_assoc($select_options["users.$key"]))
           {
-            if (isset($select_options["users.$key"][$row[$key]]))
+            if (isset($row[$key]) && isset($select_options["users.$key"][$row[$key]]))
             {
               $col_value = $select_options["users.$key"][$row[$key]];
             }
@@ -244,13 +221,13 @@ function output_row($row)
             {
               $col_value = '';
             }
-            $values[] = "<div class=\"string\">" . htmlspecialchars($col_value) . "</div>";
+            $values[] = "<div class=\"string\">" . escape_html($col_value) . "</div>";
           }
           elseif (($field['nature'] == 'boolean') ||
               (($field['nature'] == 'integer') && isset($field['length']) && ($field['length'] <= 2)) )
           {
             // booleans: represent by a checkmark
-            $values[] = (!empty($col_value)) ? "<img src=\"images/check.png\" alt=\"check mark\" width=\"16\" height=\"16\">" : "&nbsp;";
+            $values[] = (!empty($col_value)) ? "&check;" : '';
           }
           elseif (($field['nature'] == 'integer') && isset($field['length']) && ($field['length'] > 2))
           {
@@ -264,8 +241,8 @@ function output_row($row)
             {
               $col_value = '';
             }
-            $values[] = "<div class=\"string\" title=\"" . htmlspecialchars($col_value) . "\">" .
-                        htmlspecialchars($col_value) . "</div>";
+            $values[] = "<div class=\"string\" title=\"" . escape_html($col_value) . "\">" .
+                        escape_html($col_value) . "</div>";
           }
           break;
       }  // end switch
@@ -370,8 +347,7 @@ function get_field_email($params, $disabled=false)
   $field->setLabel($params['label'])
         ->setControlAttributes(array('name'     => $params['name'],
                                      'value'    => $params['value'],
-                                     'disabled' => $disabled,
-                                     'multiple' => true));
+                                     'disabled' => $disabled));
 
   if (null !== ($maxlength = maxlength('users.email')))
   {
@@ -387,6 +363,8 @@ function get_field_custom($custom_field, $params, $disabled=false)
   global $select_options, $datalist_options, $is_mandatory_field, $pattern;
   global $text_input_max;
 
+  // TODO: have a common way of generating custom fields for all tables
+
   // Output a checkbox if it's a boolean or integer <= 2 bytes (which we will
   // assume are intended to be booleans)
   if (($custom_field['nature'] == 'boolean') ||
@@ -400,6 +378,14 @@ function get_field_custom($custom_field, $params, $disabled=false)
   {
     $class = 'FieldInputNumber';
   }
+  elseif (!empty($select_options[$params['field']]))
+  {
+    $class = 'FieldSelect';
+  }
+  elseif (!empty($datalist_options[$params['field']]))
+  {
+    $class = 'FieldInputDatalist';
+  }
   // Output a textarea if it's a character string longer than the limit for a
   // text input
   elseif (($custom_field['nature'] == 'character') && isset($custom_field['length']) && ($custom_field['length'] > $text_input_max))
@@ -409,14 +395,6 @@ function get_field_custom($custom_field, $params, $disabled=false)
   elseif ($custom_field['type'] == 'date')
   {
     $class = 'FieldInputDate';
-  }
-  elseif (!empty($select_options[$params['field']]))
-  {
-    $class = 'FieldSelect';
-  }
-  elseif (!empty($datalist_options[$params['field']]))
-  {
-    $class = 'FieldInputDatalist';
   }
   else
   {
@@ -431,6 +409,7 @@ function get_field_custom($custom_field, $params, $disabled=false)
   if ($custom_field['nature'] == 'decimal')
   {
     list( , $decimal_places) = explode(',', $custom_field['length']);
+    $decimal_places = intval($decimal_places);
     $step = pow(10, -$decimal_places);
     $step = number_format($step, $decimal_places);
     $field->setControlAttribute('step', $step);
@@ -494,7 +473,7 @@ function get_field_custom($custom_field, $params, $disabled=false)
     case 'FieldTextarea':
       if ($class == 'FieldTextarea')
       {
-        $field->setControlText($params['value']);
+        $field->setControlText($params['value'] ?? '');
       }
       else
       {
@@ -549,8 +528,34 @@ function get_fieldset_password($id=null, $disabled=false)
 //    $delete               If true, make the second button a Delete button instead of a Back button
 //    $disabled             If true, disable the Delete button
 //    $last_admin_warning   If true, add a warning about editing the last admin
-function get_fieldset_submit_buttons($delete=false, $disabled=false, $last_admin_warning=false)
+function get_fieldset_submit_buttons(?int $user_id, $delete=false, $disabled=false, $last_admin_warning=false)
 {
+  global $auth;
+
+  // Check whether the user can be deleted and if so what message to use
+  if ($delete && isset($user_id))
+  {
+    $user = auth()->getUserByUserId($user_id);
+    // If the user has bookings of some form in the system, then either
+    // disallow the deletion, depending on the config setting, or provide
+    // a different warning message.
+    if (isset($user) && $user->isInBookings())
+    {
+      if ($auth['db']['prevent_deletion_of_users_in_bookings'])
+      {
+        $delete = false;
+      }
+      else
+      {
+        $message = get_vocab("confirm_delete_user_plus");
+      }
+    }
+    else
+    {
+      $message = get_vocab("confirm_delete_user");
+    }
+  }
+
   $fieldset = new ElementFieldset();
 
   if ($last_admin_warning)
@@ -581,7 +586,6 @@ function get_fieldset_submit_buttons($delete=false, $disabled=false, $last_admin
 
   if ($delete)
   {
-    $message = get_vocab("confirm_delete_user");
     $button->setAttribute('onclick', "return confirm('" . escape_js($message) . "');");
   }
 
@@ -750,7 +754,7 @@ if (isset($action) && ( ($action == "edit") or ($action == "add") ))
   }
   if (!empty($name_not_unique))
   {
-    echo "<p class=\"error\">'" . htmlspecialchars($taken_name) . "' " . get_vocab('name_not_unique') . "<p>\n";
+    echo "<p class=\"error\">'" . escape_html($taken_name) . "' " . get_vocab('name_not_unique') . "<p>\n";
   }
   if (!empty($name_empty))
   {
@@ -786,11 +790,10 @@ if (isset($action) && ( ($action == "edit") or ($action == "add") ))
     }
   }
 
-  $form = new Form();
+  $form = new Form(Form::METHOD_POST);
 
   $form->setAttributes(array('id'     => 'form_edit_users',
                              'class'  => 'standard',
-                             'method' => 'post',
                              'action' => multisite(this_page())));
 
   if (isset($id))
@@ -878,7 +881,7 @@ if (isset($action) && ( ($action == "edit") or ($action == "add") ))
   // Don't let the last admin be deleted, otherwise you'll be locked out.
   $button_disabled = $delete && $editing_last_admin;
 
-  $form->addElement(get_fieldset_submit_buttons($delete, $button_disabled, $editing_last_admin));
+  $form->addElement(get_fieldset_submit_buttons($id, $delete, $button_disabled, $editing_last_admin));
 
   $form->render();
 
@@ -900,14 +903,14 @@ if (isset($action) && ($action == "update"))
               FROM " . _tbl('users') . "
              WHERE name=?
              LIMIT 1";
-    $my_id = db()->query1($sql, array(utf8_strtolower($mrbs_user->username)));
+    $my_id = db()->query1($sql, array(mb_strtolower($mrbs_user->username)));
   }
   else
   {
     $my_id = null;
   }
 
-  // You are only alowed to do this if (a) you're creating the first user or
+  // You are only allowed to do this if (a) you're creating the first user or
   // (b) you are a user admin or (c) you are editing your own details
   if (!$initial_user_creation &&
       !is_user_admin() &&
@@ -952,16 +955,22 @@ if (isset($action) && ($action == "update"))
         $values[$fieldname] = (empty($values[$fieldname])) ? 0 : 1;
       }
 
-      if (isset($values[$fieldname]))
+      if (is_string($values[$fieldname]))
       {
         // Trim the field to remove accidental whitespace
         $values[$fieldname] = trim($values[$fieldname]);
         // Truncate the field to the maximum length as a precaution.
         if (null !== ($maxlength = maxlength("users.$fieldname")))
         {
-          $values[$fieldname] = utf8_substr($values[$fieldname], 0, $maxlength);
+          $values[$fieldname] = mb_substr($values[$fieldname], 0, $maxlength);
         }
       }
+    }
+
+    // Remove any extra whitespace that may have accidentally been inserted in the display name
+    if ($fieldname == 'display_name')
+    {
+      $values[$fieldname] = remove_extra_whitespace($values[$fieldname]);
     }
 
     // we will also put the data into a query string which we will use for passing
@@ -976,7 +985,7 @@ if (isset($action) && ($action == "update"))
       case 'name':
         // name: convert it to lower case
         $q_string .= "&$fieldname=" . $values[$fieldname];
-        $values[$fieldname] = utf8_strtolower($values[$fieldname]);
+        $values[$fieldname] = mb_strtolower($values[$fieldname]);
         break;
       case 'password_hash':
         // password: if the password field is blank it means
@@ -1092,17 +1101,14 @@ if (isset($action) && ($action == "update"))
     // we assume that the user is trying to nullify the value.
     if ($field['type'] == 'date')
     {
-      if (!validate_iso_date($values[$field['name']]))
+      if ($field['is_nullable'] && (!isset($values[$field['name']]) || ($values[$field['name']] === '')))
       {
-        if ($field['is_nullable'] && ($values[$field['name']] === ''))
-        {
-          $values[$field['name']] = null;
-        }
-        else
-        {
-          $valid_data = false;
-          $q_string .= "&invalid_dates[]=" . urlencode($field['name']);
-        }
+        $values[$field['name']] = null;
+      }
+      elseif (!validate_iso_date($values[$field['name']]))
+      {
+        $valid_data = false;
+        $q_string .= "&invalid_dates[]=" . urlencode($field['name']);
       }
     }
   }
@@ -1149,6 +1155,7 @@ if (isset($action) && ($action == "update"))
       // pre-process the field value for SQL
       switch ($field['nature'])
       {
+        case 'decimal':
         case 'integer':
           if (!isset($value) || ($value === ''))
           {
@@ -1210,7 +1217,7 @@ if (isset($action) && ($action == "update"))
   }
 
   /* DEBUG lines - check the actual sql statement going into the db */
-  //echo "Final SQL string: <code>" . htmlspecialchars($operation) . "</code>";
+  //echo "Final SQL string: <code>" . escape_html($operation) . "</code>";
   //exit;
   db()->command($operation, $sql_params);
 
@@ -1224,19 +1231,19 @@ if (isset($action) && ($action == "update"))
 
 if (isset($action) && ($action == "delete"))
 {
-  $sql = "SELECT level
-            FROM " . _tbl('users') . "
-           WHERE id=?
-           LIMIT 1";
+  $user = auth()->getUserByUserId($id);
 
-  $target_level = db()->query1($sql, array($id));
-  if ($target_level < 0)
+  if (!isset($user))
   {
-    fatal_error("Fatal error while deleting a user");
+    Errors::fatalError("Fatal error while deleting a user");
   }
-  // you can't delete a user if you're not some kind of admin, and then you can't
-  // delete someone higher than you
-  if (!is_user_admin() || ($level < $target_level))
+
+  // You can't delete a user if you're not some kind of admin, and then you can't
+  // delete someone higher than you.
+  // You also can't delete a user if MRBS has been configured not to allow the
+  // deletion of users that appear in bookings in some form.
+  if (!is_user_admin() || ($level < $user->level) ||
+      ($auth['db']['prevent_deletion_of_users_in_bookings']) && $user->isInBookings())
   {
     showAccessDenied();
     exit();
@@ -1273,10 +1280,9 @@ if (!$is_ajax)
 
   if (is_user_admin()) /* Administrators get the right to add new users */
   {
-    $form = new Form();
+    $form = new Form(Form::METHOD_POST);
 
     $form->setAttributes(array('id'     => 'add_new_user',
-                               'method' => 'post',
                                'action' => multisite(this_page())));
 
     $form->addHiddenInput('action', 'add');
@@ -1329,8 +1335,8 @@ if ($initial_user_creation != 1)   // don't print the user table if there are no
     echo "<tr>";
 
     // First two columns which are the name and display name
-    echo '<th><span class="normal" data-type="title-string">' . get_vocab("users.display_name") . "</span></th>\n";
-    echo '<th><span class="normal" data-type="title-string">' . get_vocab("users.name") . "</span></th>\n";
+    echo '<th><span class="normal" data-type="string">' . get_vocab("users.display_name") . "</span></th>\n";
+    echo '<th><span class="normal" data-type="string">' . get_vocab("users.name") . "</span></th>\n";
 
     // Other column headers
     foreach ($fields as $field)
@@ -1346,12 +1352,17 @@ if ($initial_user_creation != 1)   // don't print the user table if there are no
           case 'level':
           case 'timestamp':
           case 'last_login':
+            // TODO: Switch from using title-numeric to just numeric(?)
             $heading = '<span class="normal" data-type="title-numeric">' . $heading . '</span>';
             break;
           default:
+            if ($field['nature'] == 'character')
+            {
+              $heading = '<span class="normal" data-type="string">' . $heading . '</span>';
+            }
             break;
         }
-        echo '<th id="col_' . htmlspecialchars($fieldname) . "\">$heading</th>";
+        echo '<th id="col_' . escape_html($fieldname) . "\">$heading</th>";
       }
     }
 

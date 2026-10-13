@@ -1,20 +1,39 @@
 <?php
+declare(strict_types=1);
 namespace MRBS;
 
 // Returns a string containing a single line of data details, or if $as_html is set
 // a table row of details.   The first column is the $label and the second column
 // the $value.   $class is an optional class name which can be applied to the
-// second column.
-function create_details_row($label, $value, $as_html=false, $class='')
+// second column.  If $email is set then the $value will be turned into a mailto: link.
+// $value can be of type null|int|float|string (union declarations are not supported until PHP 8.0).
+function create_details_row(string $label, $value, bool $as_html=false, string $class='', ?string $email=null) : string
 {
+  $value = $value ?? '';
   $result = '';
+
   if ($as_html)
   {
+    $escaped_value = escape_html($value);
+    if (is_string($escaped_value))
+    {
+      $escaped_value = mrbs_nl2br($escaped_value);
+    }
     $result .= "<tr>\n";
     $result .= "<td>$label</td>\n";
-    $result .= "<td" .
-               ((!empty($class)) ? " class=\"$class\"" : "") .
-               ">" . mrbs_nl2br(htmlspecialchars($value)) . "</td>\n";
+    $result .= "<td" . ((!empty($class)) ? " class=\"$class\"" : '') . '>';
+    if (isset($email))
+    {
+      // Obfuscate the email address
+      $html = '<a href="mailto:' . rawurlencode($email) . '">' . $escaped_value . '</a>';
+      $result .= '<span class="contact" data-html="' . base64_encode($html) . '">';
+    }
+    $result .= $escaped_value;
+    if (isset($email))
+    {
+      $result .= '</span>';
+    }
+    $result .= "</td>\n";
     $result .= "</tr>\n";
   }
   else
@@ -28,16 +47,17 @@ function create_details_row($label, $value, $as_html=false, $class='')
 
 // Returns a string containing a set of details for $data consisting of a label/value
 // pair for each data element in the array $data.   If $as_html is true then the string
-// is the HTML for a table body, ie looks like "<tbody> ... </tbody>".
-//    $keep_private   boolean   if true then any private fields will be given the class 'private';
-//                              note that $data must already have had values substituted
-//                              for private fields
-//    $room_disabled  boolean   if true then a note will be added that the room is disabled
-function create_details_body($data, $as_html=false, $keep_private=false, $room_disabled=false)
+// is the HTML for a table body; i.e. looks like "<tbody> ... </tbody>".
+//    $keep_private       boolean if true, then any private fields will be given the class 'private';
+//                                note that $data must already have had values substituted
+//                                for private fields
+//    $room_disabled      boolean if true, then a note will be added that the room is disabled
+//    $major_details_only boolean if true, only show the major details
+function create_details_body(array $data, bool $as_html=false, bool $keep_private=false, bool $room_disabled=false, bool $major_details_only=false) : string
 {
   global $enable_periods, $confirmation_enabled, $approval_enabled;
   global $is_private_field, $standard_fields;
-  global $strftime_format;
+  global $datetime_formats;
   global $select_options, $booking_types;
   global $edit_entry_field_order;
 
@@ -50,15 +70,9 @@ function create_details_body($data, $as_html=false, $keep_private=false, $room_d
     $data['dur_units'] = $d['dur_units'];
   }
 
-  // Set a rep_type if it hasn't been
-  if (!isset($data['rep_type']))
-  {
-    $data['rep_type'] = REP_NONE;
-  }
-
   // Go through each of the columns and for each of them that can be made private
   // substitute the private text if the user is not allowed to see the data
-  $private_text = "[" . get_vocab("unavailable") . "]";
+  $private_text = get_vocab("unavailable");
 
   foreach ($data as $key => $value)
   {
@@ -88,13 +102,54 @@ function create_details_body($data, $as_html=false, $keep_private=false, $room_d
 
       case 'create_by':
       case 'modified_by':
-        $data[$key] = $hide_this_field ? $private_text : get_display_name($data[$key]);
+        if ($hide_this_field)
+        {
+          $data[$key] = $private_text;
+        }
+        else
+        {
+          $user = auth()->getUser($value);
+          if (isset($user))
+          {
+            $data[$key] = $user->display_name;
+          }
+        }
+        // Add in the email address if there is one and we are allowed to
+        if (!isset($user) ||
+            ($user->email === '') ||
+            // The field must not be private
+            $hide_this_field ||
+            // And the user must be allowed to see others' email addresses
+            !can_see_email_addresses())
+        {
+          $email[$key] = null;
+        }
+        else
+        {
+          $email[$key] = $user->email;
+        }
         break;
 
       default:
         if (!in_array($key, $standard_fields['entry']))
         {
-          $data[$key] = $hide_this_field ? $private_text : $data[$key];
+          if ($hide_this_field)
+          {
+            $data[$key] = $private_text;
+          }
+          else
+          {
+            $columns = Columns::getInstance(_tbl('entry'));
+            $column = $columns->getColumnByName($key);
+            // Convert DATE types into a locale friendly form
+            if (isset($column) && ('date' == $column->getType()))
+            {
+              if (isset($value) && (false !== ($date = DateTime::createFromFormat(DateTime::ISO8601_DATE, $value))))
+              {
+                $data[$key] = datetime_format($datetime_formats['date'], $date->getTimestamp());
+              }
+            }
+          }
         }
         break;
     }
@@ -126,6 +181,11 @@ function create_details_body($data, $as_html=false, $keep_private=false, $room_d
 
   foreach ($field_order as $key)
   {
+    if ($major_details_only && !in_array($key, ['description', 'room_id', 'start_time', 'end_time']))
+    {
+      continue;
+    }
+
     switch ($key)
     {
       // Ignore these
@@ -186,14 +246,7 @@ function create_details_body($data, $as_html=false, $keep_private=false, $room_d
 
       case 'start_time':
         // Start date
-        if ($enable_periods)
-        {
-          list($start_period, $start_date) =  period_date_string($data['start_time'], $data['area_id']);
-        }
-        else
-        {
-          $start_date = time_date_string($data['start_time']);
-        }
+        $start_date = date_string($enable_periods, $data['start_time'], $data['area_id']);
         $tbody .= create_details_row(get_vocab("start_date"), $start_date, $as_html);
         // Duration
         $tbody .= create_details_row(get_vocab("duration"), $data['duration'] . " " . get_vocab($data['dur_units']), $as_html);
@@ -201,14 +254,7 @@ function create_details_body($data, $as_html=false, $keep_private=false, $room_d
 
       case 'end_time':
         // End date
-        if ($enable_periods)
-        {
-          list( , $end_date) =  period_date_string($data['end_time'], $data['area_id'], -1);
-        }
-        else
-        {
-          $end_date = time_date_string($data['end_time']);
-        }
+        $end_date = date_string($enable_periods, $data['end_time'], $data['area_id'], true);
         $tbody .= create_details_row(get_vocab("end_date"), $end_date, $as_html);
         break;
 
@@ -224,13 +270,13 @@ function create_details_body($data, $as_html=false, $keep_private=false, $room_d
       case 'create_by':
         // Created by
         $class = ($keep_private && !empty($is_private_field['entry.create_by'])) ? "private" : "";
-        $tbody .= create_details_row(get_vocab("createdby"), $data['create_by'], $as_html, $class);
+        $tbody .= create_details_row(get_vocab("createdby"), $data['create_by'], $as_html, $class, $email[$key]);
         break;
 
       case 'modified_by':
         // Modified by
         $class = ($keep_private && !empty($is_private_field['entry.modified_by'])) ? "private" : "";
-        $tbody .= create_details_row(get_vocab("modifiedby"), $data['modified_by'], $as_html, $class);
+        $tbody .= create_details_row(get_vocab("modifiedby"), $data['modified_by'], $as_html, $class, $email[$key]);
         break;
 
       case 'timestamp':
@@ -300,52 +346,38 @@ function create_details_body($data, $as_html=false, $keep_private=false, $room_d
     }  // switch
   }  // foreach
 
-  // Repeat type
-  $tbody .= create_details_row(get_vocab("rep_type"), get_vocab("rep_type_" . $data['rep_type']), $as_html);
-  // Repeat details
-  if($data['rep_type'] != REP_NONE)
+  if (!$major_details_only)
   {
-    switch ($data['rep_type'])
+    // Repeat type
+    $tbody .= create_details_row(get_vocab("rep_type"), get_vocab("rep_type_" . $data['rep_type']), $as_html);
+    // Repeat details
+    if ($data['repeat_rule']->getType() != RepeatRule::NONE)
     {
-      case REP_WEEKLY:
-        // Repeat days
-        $tbody .= create_details_row(get_vocab("rep_rep_day"), get_rep_day_list($data['rep_opt']), $as_html);
-        break;
-      case REP_MONTHLY:
-        if (isset($data['month_absolute']))
-        {
-          $value = $data['month_absolute'];
-        }
-        elseif (isset($data['month_relative']))
-        {
-          // Note: this does not internationalise very well and could do with revisiting.
-          // It follows the select box order in edit_entry, which is the more difficult one
-          // to sort out.  It assumes all languages have the same order as English
-          // eg "the second Wednesday" which is probably not true.
-          list($ord, $dow) = byday_split($data['month_relative']);
-          $value = get_vocab("ord_" . $ord) . " " . day_name(RFC_5545_day_to_ord($dow));
-        }
-        else
-        {
-          trigger_error("Unknown monthly repeat type, E_USER_NOTICE");
-        }
-        $tbody .= create_details_row(get_vocab("repeat_on"), $value, $as_html);
-        break;
-      default:
-        break;
+      switch ($data['repeat_rule']->getType())
+      {
+        case RepeatRule::WEEKLY:
+          // Repeat days
+          $tbody .= create_details_row(get_vocab("rep_rep_day"), $data['repeat_rule']->getDaysAsNames(), $as_html);
+          break;
+        case RepeatRule::MONTHLY:
+          $tbody .= create_details_row(get_vocab("repeat_on"), get_monthly_repeat_day($data), $as_html);
+          break;
+        default:
+          break;
+      }
+
+      // Repeat interval
+      $value = $data['repeat_rule']->getInterval() . ' ' . $data['repeat_rule']->getIntervalUnits();
+      $tbody .= create_details_row(get_vocab("rep_interval"), $value, $as_html);
+
+      // Repeat end date
+      $tbody .= create_details_row(
+        get_vocab("rep_end_date"),
+        datetime_format($datetime_formats['date'], $data['end_date']),
+        $as_html
+      );
     }
-
-    // Repeat interval
-    $value = $data['rep_interval'] . ' ' . get_rep_interval_units($data['rep_type'], $data['rep_interval']);
-    $tbody .= create_details_row(get_vocab("rep_interval"), $value, $as_html);
-
-    // Repeat end date
-    $tbody .= create_details_row(get_vocab("rep_end_date"),
-                                 utf8_strftime($strftime_format['date'],
-                                 $data['end_date']),
-                                 $as_html);
   }
-
   $tbody .= ($as_html) ? "</tbody>\n" : "";
 
   return $tbody;

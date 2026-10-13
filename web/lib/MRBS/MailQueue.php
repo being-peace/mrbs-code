@@ -1,7 +1,9 @@
 <?php
+declare(strict_types=1);
 namespace MRBS;
 
-use PHPMailer\PHPMailer\PHPMailer;
+use Mail_mimePart;
+use PHPMailer\PHPMailer\Exception;
 use PHPMailer\PHPMailer\SMTP;
 
 require_once MRBS_ROOT . '/functions_mail.inc';
@@ -15,7 +17,34 @@ class MailQueue
   protected static $mails = array();
 
 
-  public static function add($addresses, $subject, $text_body, $html_body, $attachment, $charset = 'us-ascii')
+  /**
+   * Add an email to the queue for sending
+   *
+   * @param array       $addresses    an array of addresses, each being a comma
+   *                                  separated list of email addresses.  Indexed by
+   *                                    'from'
+   *                                    'reply_to'
+   *                                    'to'
+   *                                    'cc'
+   *                                    'bcc'
+   * @param string      $subject      email subject
+   * @param string      $text_body    text part of body
+   * @param string|null $html_body    HTML part of body
+   * @param array|null  $attachment   file to attach.   An array consisting of
+   *                                    'content' the file or data to attach
+   *                                    'method'  the iCalendar METHOD
+   *                                    'name'    the name to give it
+   * @param string      $charset      character set used in body
+   * @return void
+   */
+  public static function add(
+      array $addresses,
+      string $subject,
+      string $text_body,
+      ?string $html_body,
+      ?array $attachment,
+      string $charset = 'us-ascii'
+    ) : void
   {
     global $mail_settings;
 
@@ -43,7 +72,7 @@ class MailQueue
   }
 
 
-  public static function flush()
+  public static function flush() : void
   {
     foreach (self::$mails as $mail)
     {
@@ -59,46 +88,57 @@ class MailQueue
   }
 
 
-  protected static function getNRecipients($addresses)
+  /**
+   * Get the number of recipients in the addresses array.
+   */
+  protected static function getNRecipients(array $addresses) : int
   {
-    if (empty($addresses))
+    $result = 0;
+
+    if (!empty($addresses))
     {
-      return 0;
+      foreach (['to', 'cc', 'bcc'] as $key)
+      {
+        if (!empty($addresses[$key]))
+        {
+          $result += count(parse_addresses($addresses[$key]));
+        }
+      }
     }
 
-    $recipients = (!empty($addresses['to'])) ? $addresses['to'] : '';
-    $recipients .= (!empty($addresses['cc'])) ? ',' . $addresses['cc'] : '';
-    $recipients .= (!empty($addresses['bcc'])) ? ',' . $addresses['bcc'] : '';
-    $parsed_addresses = PHPMailer::parseAddresses($recipients);
-
-    return count($parsed_addresses);
+    return $result;
   }
 
 
   /**
    * Send an email
    *
-   * @param array   $addresses        an array of addresses, each being a comma
+   * @param array       $addresses    an array of addresses, each being a comma
    *                                  separated list of email addresses.  Indexed by
    *                                    'from'
+   *                                    'reply_to'
    *                                    'to'
    *                                    'cc'
    *                                    'bcc'
-   * @param string  $subject          email subject
-   * @param array   $text_body        text part of body, an array consisting of
-   *                                    'content'  the content itself
-   *                                    'cid'      the content id
-   * @param array   $html_body        HTML part of body, an array consisting of
-   *                                    'content'  the content itself
-   *                                    'cid'      the content id
-   * @param array   $attachment       file to attach.   An array consisting of
+   * @param string      $subject      email subject
+   * @param string      $text_body    text part of body
+   * @param string|null $html_body    HTML part of body
+   * @param array|null  $attachment   file to attach.   An array consisting of
    *                                    'content' the file or data to attach
    *                                    'method'  the iCalendar METHOD
    *                                    'name'    the name to give it
-   * @param string  $charset          character set used in body
-   * @return bool                     TRUE or PEAR error object if fails
+   * @param string      $charset      character set used in body
+   * @return bool                     TRUE on success, FALSE on failure
+   * @throws Exception
    */
-  protected static function sendMail($addresses, $subject, $text_body, $html_body, $attachment, $charset = 'us-ascii')
+  protected static function sendMail(
+      array $addresses,
+      string $subject,
+      string $text_body,
+      ?string $html_body,
+      ?array $attachment,
+      string $charset = 'us-ascii'
+    ) : bool
   {
     // Modify the include path because this is run after shutdown when the working directory may have
     // changed (see the note in https://www.php.net/manual/en/function.register-shutdown-function.php).
@@ -118,7 +158,7 @@ class MailQueue
     static $last_mail_sent = null;
     static $last_n_addresses = null;
 
-    $mail = new PHPMailer();
+    $mail = new Mailer($mail_settings, $sendmail_settings, $smtp_settings);
 
     mail_debug("Preparing to send email ...");
     if ($mail_settings['debug'])
@@ -129,16 +169,6 @@ class MailQueue
 
     $eol = "\n";  // EOL sequence to use in mail headers.  Need "\n" for mail backend
 
-    // for cases where the mail server refuses
-    // to send emails with cc or bcc set, put the cc
-    // addresses on the to line
-    if (!empty($addresses['cc']) && $mail_settings['treat_cc_as_to'])
-    {
-      $recipients_array = array_merge(explode(',', $addresses['to']),
-        explode(',', $addresses['cc']));
-      $addresses['to'] = get_address_list($recipients_array);
-      $addresses['cc'] = NULL;
-    }
     if (empty($addresses['from']))
     {
       if (isset($mail_settings['from']))
@@ -151,69 +181,25 @@ class MailQueue
       }
     }
 
-    switch ($mail_settings['admin_backend'])
-    {
-      case 'mail':
-        $mail->isMail();
-        break;
-      case 'qmail':
-        $mail->isQmail();
-        if (isset($mail_settings['qmail']['qmail-inject-path']))
-        {
-          $mail->Sendmail = $mail_settings['qmail']['qmail-inject-path'];
-        }
-        break;
-      case 'sendmail':
-        $mail->isSendmail();
-        $mail->Sendmail = $sendmail_settings['path'];
-        if (isset($sendmail_settings['args']) && ($sendmail_settings['args'] !== ''))
-        {
-          $mail->Sendmail .= ' ' . $sendmail_settings['args'];
-        }
-        break;
-      case 'smtp':
-        $mail->isSMTP();
-        $mail->Host = $smtp_settings['host'];
-        $mail->Port = $smtp_settings['port'];
-        $mail->SMTPAuth = $smtp_settings['auth'];
-        $mail->SMTPSecure = $smtp_settings['secure'];
-        $mail->Username = $smtp_settings['username'];
-        $mail->Password = $smtp_settings['password'];
-        $mail->Hostname = $smtp_settings['hostname'];
-        $mail->Helo = $smtp_settings['helo'];
-        if ($smtp_settings['disable_opportunistic_tls'])
-        {
-          $mail->SMTPAutoTLS = false;
-        }
-        $mail->SMTPOptions = array
-        (
-          'ssl' => array
-          (
-            'verify_peer' => $smtp_settings['ssl_verify_peer'],
-            'verify_peer_name' => $smtp_settings['ssl_verify_peer_name'],
-            'allow_self_signed' => $smtp_settings['ssl_allow_self_signed']
-          )
-        );
-        break;
-      default:
-        $mail->isMail();
-        trigger_error("Unknown mail backend '" . $mail_settings['admin_backend'] . "'." .
-          " Defaulting to 'mail'.",
-          E_USER_WARNING);
-        break;
-    }
-
-    $mail->CharSet = get_mail_charset();  // PHPMailer defaults to 'iso-8859-1'
+    $mail->CharSet = Language::MAIL_CHARSET;  // PHPMailer defaults to 'iso-8859-1'
     $mail->AllowEmpty = true;  // remove this for production
-    $mail->addCustomHeader('Auto-Submitted', 'auto-generated');
+
+    if (!empty($addresses['reply_to']))
+    {
+      $reply_to_addresses = parse_addresses($addresses['reply_to']);
+      foreach ($reply_to_addresses as $reply_to_address)
+      {
+        $mail->addReplyTo($reply_to_address['address'], $reply_to_address['name']);
+      }
+    }
 
     if (isset($addresses['from']))
     {
-      $from_addresses = PHPMailer::parseAddresses($addresses['from']);
+      $from_addresses = parse_addresses($addresses['from']);
       $mail->setFrom($from_addresses[0]['address'], $from_addresses[0]['name']);
     }
 
-    $to_addresses = PHPMailer::parseAddresses($addresses['to']);
+    $to_addresses = parse_addresses($addresses['to']);
     foreach ($to_addresses as $to_address)
     {
       $mail->addAddress($to_address['address'], $to_address['name']);
@@ -221,16 +207,25 @@ class MailQueue
 
     if (isset($addresses['cc']))
     {
-      $cc_addresses = PHPMailer::parseAddresses($addresses['cc']);
+      $cc_addresses = parse_addresses($addresses['cc']);
       foreach ($cc_addresses as $cc_address)
       {
-        $mail->addCC($cc_address['address'], $cc_address['name']);
+        // for cases where the mail server refuses to send emails with cc set, put the cc addresses on the to line
+        if ($mail_settings['treat_cc_as_to'])
+        {
+          $mail->addAddress($cc_address['address'], $cc_address['name']);
+        }
+        // otherwise treat them normally, adding them to the cc line
+        else
+        {
+          $mail->addCC($cc_address['address'], $cc_address['name']);
+        }
       }
     }
 
     if (isset($addresses['bcc']))
     {
-      $bcc_addresses = PHPMailer::parseAddresses($addresses['bcc']);
+      $bcc_addresses = parse_addresses($addresses['bcc']);
       foreach ($bcc_addresses as $bcc_address)
       {
         $mail->addBCC($bcc_address['address'], $bcc_address['name']);
@@ -243,7 +238,8 @@ class MailQueue
     // Build the email.   We're going to use the "alternative" subtype which means
     // that we order the sub parts according to how faithful they are to the original,
     // putting the least faithful first, ie the ordinary plain text version.   The
-    // email client then uses the most faithful version that it can handle.
+    // email client then uses the most faithful version that it can handle. (See
+    // https://www.rfc-editor.org/rfc/rfc2046#section-5.1.4)
     //
     // If we are also adding the iCalendar information then we enclose this alternative
     // mime subtype in an outer mime type which is mixed.    This is necessary so that
@@ -267,20 +263,22 @@ class MailQueue
     $mime_params = array();
     $mime_params['eol'] = $eol;
     $mime_params['content_type'] = "multipart/alternative";
-    $mime_inner = new \Mail_mimePart('', $mime_params);
+    $mime_inner = new Mail_mimePart('', $mime_params);
 
     // Add the text part
     $mime_params['content_type'] = "text/plain";
+    $mime_params['cid'] = generate_global_uid('text');
     $mime_params['encoding']     = "8bit";
     $mime_params['charset']      = $charset;
-    $mime_inner->addSubPart($text_body['content'], $mime_params);
+    $mime_inner->addSubPart($text_body, $mime_params);
+    unset($mime_params['cid']);
 
     // Add the HTML mail
-    if (!empty($html_body))
+    if (isset($html_body))
     {
       $mime_params['content_type'] = "text/html";
-      $mime_params['cid'] = $html_body['cid'];
-      $mime_inner->addSubPart($html_body['content'], $mime_params);
+      $mime_params['cid'] = generate_global_uid('html');
+      $mime_inner->addSubPart($html_body, $mime_params);
       unset($mime_params['cid']);
     }
 
@@ -304,7 +302,7 @@ class MailQueue
       $mime_params = array();
       $mime_params['eol'] = $eol;
       $mime_params['content_type'] = "multipart/mixed";
-      $mime = new \Mail_mimePart('', $mime_params);
+      $mime = new Mail_mimePart('', $mime_params);
 
       // Now add the inner section as the first sub part
       $mime_inner = $mime_inner->encode();
@@ -348,10 +346,10 @@ class MailQueue
     {
       $mail->set('MIMEBody', $mime['body']);
       mail_debug("Using backend '" . $mail_settings['admin_backend'] . "'");
-      mail_debug("From: " . (isset($addresses['from']) ? $addresses['from'] : ''));
-      mail_debug("To: " . (isset($addresses['to']) ? $addresses['to'] : ''));
-      mail_debug("Cc: " . (isset($addresses['cc']) ? $addresses['cc'] : ''));
-      mail_debug("Bcc: " . (isset($addresses['bcc']) ? $addresses['bcc'] : ''));
+      mail_debug("From: " . ($addresses['from'] ?? ''));
+      mail_debug("To: " . ($addresses['to'] ?? ''));
+      mail_debug("Cc: " . ($addresses['cc'] ?? ''));
+      mail_debug("Bcc: " . ($addresses['bcc'] ?? ''));
 
       // Throttle the rate of mail sending if required
       if (!empty($mail_settings['rate_limit']))
@@ -385,7 +383,7 @@ class MailQueue
 
       $disabled_functions = ini_get('disable_functions');
 
-      if (!empty($disabled_functions) && (utf8_strpos($disabled_functions, 'escapeshell') !== FALSE)  &&
+      if (!empty($disabled_functions) && (mb_strpos($disabled_functions, 'escapeshell') !== FALSE)  &&
         in_array($mail_settings['admin_backend'], array('mail', 'sendmail')))
       {
         $message = "Your PHP system has one or both of the escapeshellarg() and escapeshellcmd() functions " .

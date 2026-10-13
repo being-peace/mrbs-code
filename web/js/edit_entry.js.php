@@ -1,18 +1,52 @@
 <?php
+declare(strict_types=1);
 namespace MRBS;
 
 require "../defaultincludes.inc";
 
 http_headers(array("Content-type: application/x-javascript"),
              60*30);  // 30 minute expiry
-
-if ($use_strict)
-{
-  echo "'use strict';\n";
-}
 ?>
 
+'use strict';
+
 var isBookAdmin;
+
+<?php
+// Create a JavaScript version of the PHP $is_mandatory_fields variable
+echo "const mandatoryFields = {";
+if (!empty($is_mandatory_field))
+{
+  $lines = [];
+  foreach ($is_mandatory_field as $key => $value)
+  {
+    list($table, $field_name) = explode('.', $key, 2);
+    if (($table === 'entry') && !empty($value))
+    {
+      // Prefix custom field names
+      if (!in_array($field_name, $standard_fields['entry']))
+      {
+        $field_name = VAR_PREFIX . $field_name;
+      }
+      $line = "  $field_name: ";
+      if (is_bool($value))
+      {
+        $line .= ($value) ? 'true' : 'false';
+      }
+      else
+      {
+        $line .= '[' . implode(', ', $value) . ']';
+      }
+      $lines[] = $line;
+    }
+  }
+  if (!empty($lines))
+  {
+    echo "\n" . implode(",\n", $lines) . "\n";
+  }
+}
+echo "};\n";
+?>
 
 <?php
 // Set (if set is true) or clear (if set is false) a timer
@@ -51,18 +85,34 @@ var conflictTimer = function conflictTimer(set) {
 
 
 <?php
-// Function to display the secondary repeat type fieldset appropriate
-// to the selected repeat type
+// Function to (1) add 'required' attributes to the rep_interval and rep_end_date fields
+// if it's a repeating booking, (2) show/hide the repeat end date and skip fields and
+// (3) display the secondary repeat type fieldset appropriate to the selected repeat type.
 ?>
 var changeRepTypeDetails = function changeRepTypeDetails() {
     var repType = parseInt($('input[name="rep_type"]:checked').val(), 10);
+    var isRepeat = (repType !== <?php echo RepeatRule::NONE ?>);
+    <?php
+    // Add a 'required' attribute to the rep_interval input to prevent users entering an
+    // empty string.  But remove it if it's not a repeating entry, because if they happen
+    // to have an empty string they won't see the validation message since the input will
+    // be hidden.
+    ?>
+    $('#rep_interval').prop('required', isRepeat);
+    <?php
+    // Add a 'required' attribute to the rep_end_date input if shown to prevent users
+    //  entering an empty string.  Show/hide the repeat end date and skip fields
+    ?>
+    $('#rep_end_date').prop('required', isRepeat).parent().toggle(isRepeat);
+    $('#skip').parent().toggle(isRepeat);
+    <?php // Show the appropriate details ?>
     $('.rep_type_details').hide();
     switch (repType)
     {
-      case <?php echo REP_WEEKLY ?>:
+      case <?php echo RepeatRule::WEEKLY ?>:
         $('#rep_weekly').show();
         break;
-      case <?php echo REP_MONTHLY ?>:
+      case <?php echo RepeatRule::MONTHLY ?>:
         $('#rep_monthly').show();
         break;
       default:
@@ -73,7 +123,6 @@ var changeRepTypeDetails = function changeRepTypeDetails() {
 
 <?php
 // Function to change the units for the repeat interval to match the repeat type.
-// Additionally, the lines for repetition and skipping are shown/hidden.
 ?>
 var changeRepIntervalUnits = function changeRepIntervalUnits() {
     var repType = parseInt($('input[name="rep_type"]:checked').val(), 10);
@@ -82,17 +131,17 @@ var changeRepIntervalUnits = function changeRepIntervalUnits() {
     var text;
     switch (repType)
     {
-      case <?php echo REP_DAILY ?>:
-        text = (repInterval === 1) ? '<?php echo get_vocab('day') ?>' : '<?php echo get_vocab('days') ?>';
+      case <?php echo RepeatRule::DAILY ?>:
+        text = (repInterval === 1) ? '<?php echo get_js_vocab('day') ?>' : '<?php echo get_js_vocab('days') ?>';
         break;
-      case <?php echo REP_WEEKLY ?>:
-        text = (repInterval === 1) ? '<?php echo get_vocab('week') ?>' : '<?php echo get_vocab('weeks') ?>';
+      case <?php echo RepeatRule::WEEKLY ?>:
+        text = (repInterval === 1) ? '<?php echo get_js_vocab('week') ?>' : '<?php echo get_js_vocab('weeks') ?>';
         break;
-      case <?php echo REP_MONTHLY ?>:
-        text = (repInterval === 1) ? '<?php echo get_vocab('month') ?>' : '<?php echo get_vocab('months') ?>';
+      case <?php echo RepeatRule::MONTHLY ?>:
+        text = (repInterval === 1) ? '<?php echo get_js_vocab('month') ?>' : '<?php echo get_js_vocab('months') ?>';
         break;
-      case <?php echo REP_YEARLY ?>:
-        text = (repInterval === 1) ? '<?php echo get_vocab('year_lc') ?>' : '<?php echo get_vocab('years') ?>';
+      case <?php echo RepeatRule::YEARLY ?>:
+        text = (repInterval === 1) ? '<?php echo get_js_vocab('year_lc') ?>' : '<?php echo get_js_vocab('years') ?>';
         break;
       default:
         text = units.text();
@@ -100,10 +149,7 @@ var changeRepIntervalUnits = function changeRepIntervalUnits() {
     }
     units.text(text);
 
-    units.parent().toggle(repType !== <?php echo REP_NONE ?>);
-
-    $('#rep_end_date').parent().toggle(repType !== <?php echo REP_NONE ?>);
-    $('#skip').parent().toggle(repType !== <?php echo REP_NONE ?>);
+    units.parent().toggle(repType !== <?php echo RepeatRule::NONE ?>);
   };
 
 
@@ -233,7 +279,9 @@ function onAllDayClick()
     {
       <?php
       // If the booking day spans midnight then the first and last slots
-      // are going to be on different days
+      // are going to be on different days.
+      // This code works because new Date() with just a date string generates a UTC
+      // date and toISOString() always returns a UTC datetime.
       ?>
       if (onAllDayClick.oldStart < firstSlot)
       {
@@ -265,33 +313,29 @@ function onAllDayClick()
 }
 
 <?php
-// Set the error messages to be used for the various fields.     We do this twice:
+// Set the error messages to be used for the various fields.  We do this twice:
 // once to redefine the HTML5 error message and once for JavaScript alerts, for those
 // browsers not supporting HTML5 field validation.
 ?>
-function validationMessages()
+function validationMessages(areaId)
 {
   var field, label;
   <?php
-  // First of all create a property in the vocab object for each of the mandatory
-  // fields.    The name and rooms field are implicitly mandatory.
+  // First, create a property in the vocab object for each of the mandatory fields.  The name and rooms field are
+  // implicitly mandatory.
   ?>
   validationMessages.vocab = {};
   validationMessages.vocab['name'] = '';
   validationMessages.vocab['rooms'] = '';
-  <?php
-  foreach ($is_mandatory_field as $key => $value)
+  for (const [fieldName, value] of Object.entries(mandatoryFields))
   {
-    list($table, $fieldname) = explode('.', $key, 2);
-    if ($table == 'entry')
+    if ((value === true) || (Array.isArray(value) && value.includes(parseInt(areaId))))
     {
-      $prefix = (in_array($fieldname, $standard_fields['entry'])) ? '' : VAR_PREFIX;
-      ?>
-      validationMessages.vocab['<?php echo escape_js($prefix . $fieldname) ?>'] = '';
-      <?php
+      validationMessages.vocab[fieldName] = '';
     }
   }
 
+  <?php
   // Then (a) fill each of those properties with an error message and (b) redefine
   // the HTML5 error message
   ?>
@@ -304,7 +348,7 @@ function validationMessages()
       {
         validationMessages.vocab[key] = label.text();
         validationMessages.vocab[key] = '"' + validationMessages.vocab[key] + '" ';
-        validationMessages.vocab[key] += '<?php echo escape_js(get_vocab("is_mandatory_field")) ?>';
+        validationMessages.vocab[key] += '<?php echo get_js_vocab("is_mandatory_field") ?>';
 
         field = document.getElementById(key);
         if (field.setCustomValidity && field.willValidate)
@@ -461,13 +505,13 @@ function validate(form)
   var dateDiff = getDateDifference();
   if (dateDiff < 0)
   {
-    window.alert("<?php echo escape_js(get_vocab('start_after_end_long'))?>");
+    window.alert("<?php echo get_js_vocab('start_after_end_long')?>");
     return false;
   }
 
   <?php // Repeat checks ?>
   var repType = form.find('input:radio[name=rep_type]:checked').val();
-  if ((repType !== undefined) && (parseInt(repType, 10) !== <?php echo REP_NONE ?>))
+  if ((repType !== undefined) && (parseInt(repType, 10) !== <?php echo RepeatRule::NONE ?>))
   {
     <?php
     // Check that there's a sensible value for rep_interval.   Only necessary
@@ -476,7 +520,7 @@ function validate(form)
     if ((!("min" in testInput) || !(("step" in testInput))) &&
         (form.find('#rep_interval').val() < 1))
     {
-      window.alert("<?php echo escape_js(get_vocab('invalid_rep_interval')) ?>");
+      window.alert("<?php echo get_js_vocab('invalid_rep_interval') ?>");
       return false;
     }
     <?php
@@ -485,10 +529,19 @@ function validate(form)
     ?>
     if ($('input[name="rep_end_date"]').val() === $('input[name="end_date"]').val())
     {
-      if (!window.confirm("<?php echo escape_js(get_vocab('confirm_rep_end_date')) ?>"))
+      if (!window.confirm("<?php echo get_js_vocab('confirm_rep_end_date') ?>"))
       {
         return false;
       }
+    }
+    <?php
+    // Check that the repeat end date is not before the start date.  If it is, nothing
+    // will be booked, which is probably not what was intended.
+    ?>
+    if ($('input[name="rep_end_date"]').val() < $('input[name="start_date"]').val())
+    {
+      window.alert("<?php echo get_js_vocab('rep_end_date_before_start_date') ?>");
+      return false;
     }
   }
 
@@ -604,6 +657,24 @@ function checkConflicts(optional)
       return;
     }
 
+    // Some browsers, eg Firefox, allow a 'multiple' select element to have nothing selected,
+    // even though it has the required attribute. This won't happen when the form is submitted,
+    // but can happen when the user is selecting options. If this happens when there is no option
+    // selected, then don't bother checking for conflicts because the data are obviously
+    // meaningless.  An example is the rooms[] field.
+    let requiredSelectsComplete = true;
+    form.find('select:required').not(':disabled').each(function() {
+      if ($(this).prop('multiple') && ($(this).val().length === 0))
+      {
+        requiredSelectsComplete = false;
+        return false; // break out of the .each loop
+      }
+    });
+    if (!requiredSelectsComplete)
+    {
+      return;
+    }
+
     <?php
     // Load the params object with the values of all the form fields that are not
     // disabled and are not submit buttons of one kind or another
@@ -640,9 +711,17 @@ function checkConflicts(optional)
     }
 
     checkConflicts.nOutstanding++;
-    $.post('edit_entry_handler.php', params, function(result) {
-        if (result)
+    $.post('edit_entry_handler.php', params)
+      .fail(function() {
+        $('#checks').hide();
+      })
+      .done(function(result) {
+        if (!result)
         {
+          $('#checks').hide();
+        }
+        else {
+          $('#checks').show();
           checkConflicts.nOutstanding--;
           var conflictDiv = $('#conflict_check');
           var scheduleDetails = $('#schedule_details');
@@ -668,12 +747,13 @@ function checkConflicts(optional)
           scheduleDetails.html(detailsHTML);
 
           <?php
-          // Display the results of the policy check.   Set the class to "good" if there
-          // are no policy violations at all.  To "notice" if there are no errors, but some
+          // Display the results of the policy check. Set the class to "good" if there
+          // are no policy violations at all; to "notice" if there are no errors, but some
           // notices (this happens when an admin user makes a booking that an ordinary user
-          // would not be allowed to.  Otherwise "bad".  Content and styling are supplied by CSS.
+          // would not be allowed to); otherwise "bad".  Content and styling are supplied by CSS.
           ?>
           var policyDiv = $('#policy_check');
+          var rulesList;
           if (result.violations.errors.length === 0)
           {
             if (result.violations.notices.length === 0)
@@ -688,7 +768,7 @@ function checkConflicts(optional)
               detailsHTML = "<p>";
               titleText = '<?php echo escape_js(html_entity_decode(get_vocab("rules_broken_notices"))) ?>' + "\n\n";
               detailsHTML += titleText + "<\/p>";
-              var rulesList = getErrorList(result.violations.notices);
+              rulesList = getErrorList(result.violations.notices);
               detailsHTML += rulesList.html;
               titleText += rulesList.text;
             }
@@ -699,13 +779,13 @@ function checkConflicts(optional)
             detailsHTML = "<p>";
             titleText = '<?php echo escape_js(html_entity_decode(get_vocab("rules_broken"))) ?>' + "\n\n";
             detailsHTML += titleText + "<\/p>";
-            var rulesList = getErrorList(result.violations.errors);
+            rulesList = getErrorList(result.violations.errors);
             detailsHTML += rulesList.html;
             titleText += rulesList.text;
           }
           policyDiv.attr('title', titleText);
           policyDetails.html(detailsHTML);
-        }  <?php // if (result) ?>
+        }  <?php // if (!result) else ?>
       }, 'json');
   }, timeout);  <?php // setTimeout() ?>
 
@@ -716,32 +796,38 @@ function checkConflicts(optional)
 // minutes, hours and days
 ?>
 var vocab = {};
-vocab.periods = {singular: '<?php echo escape_js(get_vocab("period_lc")) ?>',
-                 plural:   '<?php echo escape_js(get_vocab("periods")) ?>'};
-vocab.minutes = {singular: '<?php echo escape_js(get_vocab("minute_lc")) ?>',
-                 plural:   '<?php echo escape_js(get_vocab("minutes")) ?>'};
-vocab.hours   = {singular: '<?php echo escape_js(get_vocab("hour_lc")) ?>',
-                 plural:   '<?php echo escape_js(get_vocab("hours")) ?>'};
-vocab.days    = {singular: '<?php echo escape_js(get_vocab("day")) ?>',
-                 plural:   '<?php echo escape_js(get_vocab("days")) ?>'};
+vocab.periods = {singular: '<?php echo get_js_vocab("period_lc") ?>',
+                 plural:   '<?php echo get_js_vocab("periods") ?>'};
+vocab.minutes = {singular: '<?php echo get_js_vocab("minute_lc") ?>',
+                 plural:   '<?php echo get_js_vocab("minutes") ?>'};
+vocab.hours   = {singular: '<?php echo get_js_vocab("hour_lc") ?>',
+                 plural:   '<?php echo get_js_vocab("hours") ?>'};
+vocab.days    = {singular: '<?php echo get_js_vocab("day") ?>',
+                 plural:   '<?php echo get_js_vocab("days") ?>'};
 
 
+<?php
+// Removes any trailing zeroes after the decimal point.
+?>
 function durFormat(r)
 {
+  var lastChar;
+
   r = r.toFixed(2);
   r = parseFloat(r);
-  r = r.toLocaleString();
+  r = r.toLocaleString(args.langPrefs);
 
   if ((r.indexOf('.') >= 0) || (r.indexOf(',') >= 0))
   {
-    while (r.substr(r.length -1) === '0')
+    while (r.slice(-1) === '0')
     {
-      r = r.substr(0, r.length - 1);
+      r = r.slice(0, -1);
     }
 
-    if ((r.substr(r.length -1) === '.') || (r.substr(r.length -1) === ','))
+    lastChar = r.slice(-1);
+    if ((lastChar === '.') || (lastChar === ','))
     {
-      r = r.substr(0, r.length - 1);
+      r = r.slice(0, -1);
     }
   }
 
@@ -768,7 +854,6 @@ function getDuration(from, to, days)
 
 
   durUnits = (enablePeriods) ? '<?php echo "periods" ?>' : '<?php echo "minutes" ?>';
-  duration = to - from;
   duration = Math.floor((to - from) / 60);
 
   if (enablePeriods)
@@ -917,8 +1002,9 @@ function adjustSlotSelectors()
   //     to have a go at finding a time/period in the new area as close
   //     as possible to the one that was selected in the old area.
   ?>
-  var oldArea = $('#area').data('previous'),
-      currentArea = $('#area').data('current');
+  var area = $('#area'),
+      oldArea = area.data('previous'),
+      currentArea = area.data('current');
 
   var enablePeriods    = areaConfig('enable_periods'),
       oldEnablePeriods = areaConfig('enable_periods', oldArea),
@@ -936,7 +1022,7 @@ function adjustSlotSelectors()
       oldEndValue = parseInt(endSelect.data('previous'), 10);
 
   var nbsp = '\u00A0',
-      startValue, endValue, lastValue, optionClone;
+      startValue, endValue, firstValue, lastValue, optionClone;
 
   if (startSelect.length === 0)
   {
@@ -1031,7 +1117,7 @@ function adjustSlotSelectors()
     startValue = parseInt(startSelect.val(), 10);
     endValue = parseInt(endSelect.val(), 10);
     <?php
-    // If the start value has changed then we adjust the endvalue
+    // If the start value has changed then we adjust the end value
     // to keep the duration the same.  (If the end value has changed
     // then the duration will be changed when we recalculate durations below)
     ?>
@@ -1128,7 +1214,7 @@ function adjustSlotSelectors()
             if (i === 0)
             {
               endSelect.append($(this).val(thisValue).text(nbsp));
-              var errorMessage = '<?php echo escape_js(get_vocab("max_booking_duration")) ?>' + nbsp;
+              var errorMessage = '<?php echo get_js_vocab("max_booking_duration") ?>' + nbsp;
               if (enablePeriods)
               {
                 errorMessage += maxDurationPeriods + nbsp;
@@ -1155,7 +1241,7 @@ function adjustSlotSelectors()
         optionClone = $(this).clone();
         if (dateDifference < 0)
         {
-          optionClone.text('<?php echo escape_js(get_vocab("start_after_end"))?>');
+          optionClone.text('<?php echo get_js_vocab("start_after_end")?>');
         }
         else
         {
@@ -1167,8 +1253,26 @@ function adjustSlotSelectors()
       }
     });
 
+  firstValue = parseInt(endSelect.find('option').first().val(), 10);
   lastValue = parseInt(endSelect.find('option').last().val(), 10);
-  endValue = isNaN(endValue) ? lastValue : Math.min(endValue, lastValue);
+  if (isNaN(endValue)) <?php // Is this possible? ?>
+  {
+    endValue = lastValue;
+  }
+  else
+  {
+    <?php
+    // We constrain the end value to stay on the same day, but it might be
+    // better to move the end date selector back one day if the new end value
+    // would be before the beginning of the day, and similarly forward one day
+    // if it would be after the end of the day.  This is what some other calendar
+    // systems, eg Outlook, do, but it gets a little more complicated when the
+    // booking day is less than 24 hours, as it is by default in MRBS.
+    ?>
+    endValue = Math.max(endValue, firstValue);
+    endValue = Math.min(endValue, lastValue);
+  }
+
   endSelect.val(endValue);
   endSelect.data('current', endValue);
 
@@ -1223,6 +1327,12 @@ function populateFromSessionStorage(form)
         tagName = el.prop('tagName'),
         type;
 
+      <?php // Some of the variables, eg 'top', won't have a corresponding field ?>
+      if (tagName === undefined)
+      {
+        return;
+      }
+
       <?php
       // If it's a select element then these can be multi-valued.  If we just do
       // el.val() for each one it will change the value each time, rather than adding
@@ -1263,8 +1373,9 @@ function populateFromSessionStorage(form)
         }
       }
     });
+
     <?php // Now assign values to the selects ?>
-    for (const property in selects)
+    for (var property in selects)
     {
       $('[name="' + property + '"]').val(selects[property]).change();
     }
@@ -1288,6 +1399,16 @@ function populateFromSessionStorage(form)
         console.warn("MRBS: something has gone wrong - maybe the MRBS datalist structure has changed.")
       }
     });
+
+    <?php
+    // Fix up the flatpickr inputs.  Although the dates in the hidden inputs will have been set to
+    // the correct values, we need to force the dates in the visible fields to be set, not just
+    // to the correct value, but also in the correct format.
+    ?>
+    form.find('.flatpickr-input').each(function() {
+        document.querySelector('#' + $(this).attr('id'))._flatpickr.setDate($(this).val(), true);
+      });
+
   }
 }
 
@@ -1296,22 +1417,23 @@ $(document).on('page_ready', function() {
 
   isBookAdmin = args.isBookAdmin;
 
-  var form = $('#main');
+  var form = $('#main'),
+      areaSelect = $('#area'),
+      startAndEndDates = $('#start_date, #end_date'),
+      startSelect,
+      endSelect,
+      allDay;
 
   <?php
   // If there's only one enabled area in the database there won't be an area
   // select input, so we'll have to create a dummy input because the code
   // relies on it.
   ?>
-  if ($('#area').length === 0)
+  if (areaSelect.length === 0)
   {
-    $('#div_rooms').before('<input id="area" type="hidden" value="' + args.area + '">');
+    areaSelect = $('<input id="area" type="hidden" value="' + args.area + '">');
+    $('#div_rooms').before(areaSelect);
   }
-
-  var areaSelect = $('#area'),
-      startSelect,
-      endSelect,
-      allDay;
 
   $('#div_areas').show();
 
@@ -1350,6 +1472,30 @@ $(document).on('page_ready', function() {
           <?php // Switch end time select ?>
           reloadSlotSelector($('#end_seconds'), newArea);
 
+          <?php
+          // For each field which is only mandatory for some areas (i.e. the $is_mandatory_field value is an array),
+          // check whether the new area is in the array, and if so add the required attribute, otherwise remove it.
+          ?>
+          for (const [fieldName, value] of Object.entries(mandatoryFields))
+          {
+            if (Array.isArray(value))
+            {
+              const field = $('[name="' + fieldName + '"]');
+              if (value.includes(parseInt(newArea)))
+              {
+                field.prop('required', true);
+              }
+              else
+              {
+                field.prop('required', false);
+                <?php // Clear any existing error messages ?>
+                field[0].setCustomValidity('');
+              }
+            }
+          }
+
+          <?php // Reset the validation messages ?>
+          validationMessages(newArea);
           adjustSlotSelectors();
         });
 
@@ -1404,7 +1550,7 @@ $(document).on('page_ready', function() {
   ?>
   if (typeof validationMessages === 'function')
   {
-    validationMessages();
+    validationMessages(args.area);
   }
 
   <?php
@@ -1443,6 +1589,28 @@ $(document).on('page_ready', function() {
   });
 
   <?php
+  // When the start date changes, change the minDate on the repeat end date datepicker to match.
+  ?>
+  $('#start_date').on('change', function() {
+    const rep_end_date_selector = '#rep_end_date';
+    const start_date = $(this).val();
+    const old_rep_end_date = $(rep_end_date_selector).val();
+    const fp = document.querySelector(rep_end_date_selector)._flatpickr;
+    fp.set('minDate', start_date);
+    // Note that although the flatpickr documentation says this should work on mobiles, it doesn't seem to.
+    // So we manually set the 'min' attribute for mobiles.
+    $(rep_end_date_selector).next('.flatpickr-input.flatpickr-mobile').attr('min', start_date);
+    <?php
+    // And if the old flatpickr date was less than the new minimum, set the flatpickr to the minimum,
+    // otherwise it will show a blank field.
+    ?>
+    if (old_rep_end_date < start_date)
+    {
+      fp.setDate(start_date);
+    }
+  });
+
+  <?php
   // Add a change event handler to each of the form fields - except for those that
   // are disabled and anything that might be a submit button - so that when they change
   // the validity of the booking is re-checked.   (This probably causes more checking
@@ -1454,7 +1622,7 @@ $(document).on('page_ready', function() {
   // Use a click event for checkboxes as it seems that in some browsers the event fires
   // before the value is changed.
   ?>
-  var formFields = $('form#main').find('input.date, [name]').not(':disabled, [type="submit"], [type="button"], [type="image"]');
+  var formFields = form.find('input.date, [name]').not(':disabled, [type="submit"], [type="button"], [type="image"]');
   formFields.filter(':checkbox')
             .on('click', function() {
                 checkConflicts();
@@ -1473,8 +1641,8 @@ $(document).on('page_ready', function() {
   var tabsHTML =
 '<div id="check_tabs">' +
 '<ul id="details_tabs">' +
-'<li><a href="#schedule_details"><?php echo get_vocab('schedule') ?></a></li>' +
-'<li><a href="#policy_details"><?php echo get_vocab('policy') ?></a></li>' +
+'<li><a href="#schedule_details"><?php echo get_js_vocab('schedule') ?></a></li>' +
+'<li><a href="#policy_details"><?php echo get_js_vocab('policy') ?></a></li>' +
 '<li id="ui-tab-dialog-close"></li>' +
 '</ul>' +
 '<div id="schedule_details"></div>' +
@@ -1484,7 +1652,7 @@ $(document).on('page_ready', function() {
   $('<div>').attr('id', 'check_results')
             .css('display', 'none')
             .html(tabsHTML)
-            .appendTo($('form#main'));
+            .appendTo(form);
 
   $('#conflict_check, #policy_check').on('click', function manageTabs() {
       var tabId,
@@ -1534,14 +1702,15 @@ $(document).on('page_ready', function() {
                            'minHeight': 150,
                            'draggable': true});
       <?php //steal the close button ?>
-      $('#details_tabs').append($('button.ui-dialog-titlebar-close'));
+      var detailsTabs = $('#details_tabs');
+      detailsTabs.append($('button.ui-dialog-titlebar-close'));
       <?php //move the tabs out of the content and make them draggable ?>
       $('.ui-dialog').addClass('ui-tabs')
-                     .prepend($('#details_tabs'))
+                     .prepend(detailsTabs)
                      .draggable('option', 'handle', '#details_tabs');
       <?php //switch the titlebar class ?>
       $('.ui-dialog-titlebar').remove();
-      $('#details_tabs').addClass('ui-dialog-titlebar');
+      detailsTabs.addClass('ui-dialog-titlebar');
 
       manageTabs.alreadyExists=true;
     });
@@ -1555,50 +1724,66 @@ $(document).on('page_ready', function() {
   <?php
   // Actions to take when the start and end datepickers are closed
   ?>
-  $('#start_date, #end_date').on('change', function() {
+  startAndEndDates.on('change', function() {
 
     <?php
     // (1) If the end_datepicker isn't visible and we change the start_datepicker,
     //     then set the end date to be the same as the start date.  (This will be
-    //     the case if multiday bookings are not allowed)
+    //     the case if multi-day bookings are not allowed)
     ?>
+
+    var endDate = $('#end_date');
+
     if ($(this).attr('id') === 'start_date')
     {
-      if ($('#end_date').css('visibility') === 'hidden')
+      if (endDate.css('visibility') === 'hidden')
       {
-        $('#end_date').val($('#start_date').val());
+        endDate.val($(this).val());
       }
     }
 
     <?php
-    // (2) Go and adjust the start and end time/period select options, because
+    // (2) If the start date is after the end date, then change the end date to match the
+    //     start date if the start date was changed, or change the start date to match the
+    //     end date if the end date was changed.
+    ?>
+    if (getDateDifference() < 0)
+    {
+      var selector = ($(this).attr('id') === 'start_date') ? '#end_date' : '#start_date';
+      var fp = document.querySelector(selector)._flatpickr;
+      fp.setDate($(this).val());
+    }
+
+    <?php
+    // (3) Go and adjust the start and end time/period select options, because
     //     they are dependent on the start and end dates
     ?>
     adjustSlotSelectors();
 
     <?php
-    // (3) If we're doing Ajax checking of the form then we have to check
+    // (4) If we're doing Ajax checking of the form then we have to check
     //     for conflicts when the datepicker is closed
     ?>
     checkConflicts();
 
     <?php
-    // (4) Check to see whether any time slots should be removed from the time
+    // (5) Check to see whether any time slots should be removed from the time
     //     select on the grounds that they don't exist due to a transition into DST.
     ?>
     checkTimeSlots($(this));
 
   });
 
-  $('#start_date, #end_date').each(function() {
+  startAndEndDates.each(function() {
       checkTimeSlots($(this));
     });
 
-  $('input[name="rep_type"]').on('change', changeRepTypeDetails);
-  changeRepTypeDetails();
-
   $('input[name="rep_interval"]').on('change', changeRepIntervalUnits);
-  $('input[name="rep_type"]').on('change', changeRepIntervalUnits).trigger('change');
+
+  $('input[name="rep_type"]').on('change', function() {
+    changeRepTypeDetails();
+    changeRepIntervalUnits();
+  }).trigger('change');
 
   <?php
   // Add an event listener to detect a change in the visibility
@@ -1651,7 +1836,7 @@ $(document).on('page_ready', function() {
   // Enable the checkboxes which may have been disabled, otherwise their values
   // will not be posted.
   ?>
-  form.submit(function() {
+  form.on('submit', function() {
       $('#registration').find('input[type="checkbox"]').prop('disabled', false);
     });
 

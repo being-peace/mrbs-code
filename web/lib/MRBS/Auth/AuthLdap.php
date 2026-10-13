@@ -1,13 +1,12 @@
 <?php
 namespace MRBS\Auth;
 
+use MRBS\Errors\Errors;
 use MRBS\Exception;
 use MRBS\User;
-use function MRBS\fatal_error;
 use function MRBS\get_microtime;
 use function MRBS\in_arrayi;
 use function MRBS\session;
-use function MRBS\utf8_strtolower;
 
 
 class AuthLdap extends Auth
@@ -165,7 +164,7 @@ class AuthLdap extends Auth
         {
           if (count($$item) != $count)
           {
-            fatal_error("MRBS configuration error: Count of LDAP array config variables doesn't match, aborting!");
+            Errors::fatalError("MRBS configuration error: Count of LDAP array config variables doesn't match, aborting!");
           }
         }
         else
@@ -192,18 +191,11 @@ class AuthLdap extends Auth
   }
 
 
-  /* validateUser($user, $pass)
-   *
-   * Checks if the specified username/password pair are valid
-   *
-   * $user  - The user name
-   * $pass  - The password
-   *
-   * Returns:
-   *   false    - The pair are invalid or do not exist
-   *   string   - The validated username
-   */
-  public function validateUser(?string $user, ?string $pass)
+  public function validateUser(
+    #[\SensitiveParameter]
+    ?string $user,
+    #[\SensitiveParameter]
+    ?string $pass)
   {
     // Check if we do not have a username/password
     // User can always bind to LDAP anonymously with empty password,
@@ -335,7 +327,9 @@ class AuthLdap extends Auth
       return null;
     }
 
-    $user = parent::getUserFresh($username);
+    // Use $object['user']['username'] rather than $username because they won't necessarily be
+    // the same.  See https://sourceforge.net/p/mrbs/bugs/518/
+    $user = parent::getUserFresh($object['user']['username']);
     $keys = array('display_name', 'email', 'level');
 
     foreach ($keys as $key)
@@ -367,7 +361,7 @@ class AuthLdap extends Auth
   private static function getUserCallback(&$ldap, $base_dn, $dn, $user_search,
                                           $user, &$object)
   {
-    global $ldap_get_user_email, $ldap_debug_attributes;
+    global $ldap_get_user_email, $ldap_debug_attributes, $max_level;
 
     self::debug("base_dn '$base_dn' dn '$dn' user_search '$user_search' user '$user'");
 
@@ -471,7 +465,7 @@ class AuthLdap extends Auth
     {
       if (isset($object['config']['ldap_admin_group_dn']))
       {
-        $user['level'] = in_arrayi($object['config']['ldap_admin_group_dn'], $user['groups']) ? 2 : 1;
+        $user['level'] = in_arrayi($object['config']['ldap_admin_group_dn'], $user['groups']) ? $max_level : 1;
       }
     }
 
@@ -498,6 +492,7 @@ class AuthLdap extends Auth
 
     if ($res === false)
     {
+      trigger_error("MRBS: could not get LDAP usernames.", E_USER_WARNING);
       return false;
     }
 
@@ -534,13 +529,13 @@ class AuthLdap extends Auth
     $filter = "($filter)";
 
     // Form the attributes
-    $username_attrib = utf8_strtolower($object['config']['ldap_user_attrib']);
+    $username_attrib = mb_strtolower($object['config']['ldap_user_attrib']);
     $attributes = array($username_attrib);
 
     // The display name attribute might not have been set in the config file
     if (isset($object['config']['ldap_name_attrib']))
     {
-      $display_name_attrib = utf8_strtolower($object['config']['ldap_name_attrib']);
+      $display_name_attrib = mb_strtolower($object['config']['ldap_name_attrib']);
       $attributes[] = $display_name_attrib;
     }
 
@@ -549,7 +544,7 @@ class AuthLdap extends Auth
     $res = ldap_search($ldap, $base_dn, $filter, $attributes);
     $t = self::getProfileClock();
 
-    if ($res == false)
+    if ($res === false)
     {
       self::debug("ldap_search failed: " . self::ldapError($ldap));
       return false;
@@ -572,7 +567,7 @@ class AuthLdap extends Auth
       while ($attribute)
       {
         $values = ldap_get_values($ldap, $entry, $attribute);
-        $attribute = utf8_strtolower($attribute);  // ready for the comparisons
+        $attribute = mb_strtolower($attribute);  // ready for the comparisons
 
         if ($attribute == $username_attrib)
         {
@@ -608,24 +603,24 @@ class AuthLdap extends Auth
     $result = array();
 
     // Username
-    $result['username'] = utf8_strtolower($object['config']['ldap_user_attrib']);
+    $result['username'] = mb_strtolower($object['config']['ldap_user_attrib']);
 
     // The display name attribute might not have been set in the config file
     if (isset($object['config']['ldap_name_attrib']))
     {
-      $result['display_name'] = utf8_strtolower($object['config']['ldap_name_attrib']);
+      $result['display_name'] = mb_strtolower($object['config']['ldap_name_attrib']);
     }
 
     // The email address
     if ($include_email && isset($object['config']['ldap_email_attrib']))
     {
-      $result['email'] = utf8_strtolower($object['config']['ldap_email_attrib']);
+      $result['email'] = mb_strtolower($object['config']['ldap_email_attrib']);
     }
 
     // The group name attribute might not have been set in the config file
     if ($include_groups && isset($object['config']['ldap_group_member_attrib']))
     {
-      $result['groups'] = utf8_strtolower($object['config']['ldap_group_member_attrib']);
+      $result['groups'] = mb_strtolower($object['config']['ldap_group_member_attrib']);
     }
 
     return $result;
@@ -661,7 +656,7 @@ class AuthLdap extends Auth
     while ($attribute)
     {
       $values = ldap_get_values($ldap, $entry, $attribute);
-      $attribute = utf8_strtolower($attribute);  // ready for the comparisons
+      $attribute = mb_strtolower($attribute);  // ready for the comparisons
 
       if ($attribute == $attributes['username'])
       {
@@ -832,7 +827,14 @@ class AuthLdap extends Auth
 
 
   // A wrapper for ldap_bind() that optionally suppresses "invalid credentials" errors.
-  private static function ldapBind ($link_identifier, ?string $bind_rdn=null, ?string $bind_password=null) : bool
+  // The SensitiveParameter attribute needs to be on a separate line for PHP 7.
+  // The attribute is only recognised by PHP 8.2 and later.
+  private static function ldapBind (
+    $link_identifier,
+    ?string $bind_rdn=null,
+    #[\SensitiveParameter]
+    ?string $bind_password=null
+  ) : bool
   {
     global $ldap_suppress_invalid_credentials;
 
@@ -961,12 +963,7 @@ class AuthLdap extends Auth
 
     if ($ldap_debug || $ldap_debug_attributes)
     {
-      list($called, $caller) = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2);
-      error_log(
-          "[MRBS DEBUG] " .
-          $caller['class'] . $caller['type'] . $caller['function'] . '(' . $called['line'] . ')' .
-          ": $message"
-        );
+      self::logDebugMessage($message);
     }
   }
 

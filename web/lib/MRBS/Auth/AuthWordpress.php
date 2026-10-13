@@ -1,7 +1,7 @@
 <?php
 namespace MRBS\Auth;
 
-use \MRBS\User;
+use MRBS\User;
 
 require_once MRBS_ROOT . '/auth/cms/wordpress.inc';
 
@@ -13,18 +13,12 @@ class AuthWordpress extends Auth
     $this->checkSessionMatchesType();
   }
 
-  /* validateUser($user, $pass)
-   *
-   * Checks if the specified username/password pair are valid
-   *
-   * $user  - The user name
-   * $pass  - The password
-   *
-   * Returns:
-   *   false    - The pair are invalid or do not exist
-   *   string   - The validated username
-   */
-  public function validateUser(?string $user, ?string $pass)
+
+  public function validateUser(
+    #[\SensitiveParameter]
+    ?string $user,
+    #[\SensitiveParameter]
+    ?string $pass)
   {
     return (is_wp_error(wp_authenticate($user, $pass))) ? false : $user;
   }
@@ -48,11 +42,12 @@ class AuthWordpress extends Auth
   }
 
 
-  // Checks whether validation of a user by email address is possible and
-  // allowed.  In the case of WordPress, wp_authenticate() accepts either
-  // a username or email address and so this function always returns true.
+  /**
+   */
   public function canValidateByEmail() : bool
   {
+    // In the case of WordPress, wp_authenticate() accepts either
+    // a username or email address and so this function always returns true.
     return true;
   }
 
@@ -168,7 +163,7 @@ class AuthWordpress extends Auth
     $mrbs_roles = (array)$mrbs_roles;
 
     // Put the roles into the standard WordPress format
-    $mrbs_roles = array_map('self::standardise_role_name', $mrbs_roles);
+    $mrbs_roles = array_map(self::class . '::standardise_role_name', $mrbs_roles);
 
     return (count(array_intersect($wp_user->roles, $mrbs_roles)) > 0);
   }
@@ -178,7 +173,7 @@ class AuthWordpress extends Auth
   // Example "MRBS Admin" -> "mrbs_admin"
   private static function standardise_role_name(string $role) : string
   {
-    return str_replace(' ', '_', \MRBS\utf8_strtolower($role));
+    return str_replace(' ', '_', mb_strtolower($role));
   }
 
 }

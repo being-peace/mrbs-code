@@ -1,37 +1,42 @@
 <?php
+declare(strict_types=1);
 namespace MRBS\Auth;
 
+use MRBS\DB\DB;
+use MRBS\Language;
 use MRBS\MailQueue;
 use MRBS\User;
 use PHPMailer\PHPMailer\PHPMailer;
 use function MRBS\_tbl;
 use function MRBS\auth;
 use function MRBS\db;
-use function MRBS\generate_global_uid;
+use function MRBS\format_compound_name;
 use function MRBS\generate_token;
-use function MRBS\get_mail_charset;
 use function MRBS\get_vocab;
 use function MRBS\multisite;
 use function MRBS\parse_email;
+use function MRBS\row_cast_columns;
 use function MRBS\toTimeString;
 use function MRBS\url_base;
-use function MRBS\utf8_strpos;
-use function MRBS\utf8_strtolower;
 
-class AuthDb extends Auth
+class AuthDb extends AuthDbAbstract
 {
-  /* validateUser($user, $pass)
-   *
-   * Checks if the specified username/password pair are valid
-   *
-   * $user  - The user name
-   * $pass  - The password
-   *
-   * Returns:
-   *   false    - The pair are invalid or do not exist
-   *   string   - The validated username
+  public function __construct()
+  {
+    $this->db_table = _tbl('users');
+    $this->column_name_username = 'name';
+    $this->column_name_display_name = 'display_name';
+  }
+
+
+  /**
+   * @param string|null $user a username or email address
    */
-  public function validateUser(?string $user, ?string $pass)
+  public function validateUser(
+    #[\SensitiveParameter]
+    ?string $user,
+    #[\SensitiveParameter]
+    ?string $pass)
   {
     // The string $user that the user logged on with could be either a username or
     // an email address, or even possibly just the local part of an email address.
@@ -57,13 +62,19 @@ class AuthDb extends Auth
                  SET last_login=?, timestamp=timestamp
                WHERE name=?";
       $sql_params = array($now, $result);
-      db()->command($sql, $sql_params);
+      $this->connection()->command($sql, $sql_params);
       return $result;
     }
     else
     {
       return false;
     }
+  }
+
+
+  protected function connection() : ?DB
+  {
+    return db();
   }
 
 
@@ -78,22 +89,26 @@ class AuthDb extends Auth
    *   false    - The pair are invalid or do not exist
    *   string   - The validated username
    */
-  private function validateUsername(string $user, string $pass)
+  private function validateUsername(
+    #[\SensitiveParameter]
+    ?string $user,
+    #[\SensitiveParameter]
+    ?string $pass)
   {
     $sql_params = array();
 
     // We use syntax_casesensitive_equals() rather than just '=' because '=' in MySQL
     // permits trailing spacings, eg 'john' = 'john '.   We could use LIKE, but that then
     // permits wildcards, so we could use a combination of LIKE and '=' but that's a bit
-    // messy.  WE could use STRCMP, but that's MySQL only.
+    // messy.  We could use STRCMP, but that's MySQL only.
 
     // Usernames are unique in the users table, so we only look for one.
     $sql = "SELECT password_hash, name
             FROM " . _tbl('users') . "
-           WHERE " . db()->syntax_casesensitive_equals('name', utf8_strtolower($user), $sql_params) . "
+           WHERE " . $this->connection()->syntax_casesensitive_equals('name', mb_strtolower($user), $sql_params) . "
            LIMIT 1";
 
-    $res = db()->query($sql, $sql_params);
+    $res = $this->connection()->query($sql, $sql_params);
 
     $row = $res->next_row_keyed();
 
@@ -117,7 +132,11 @@ class AuthDb extends Auth
    * Returns:
    *   array    - An array of valid usernames, empty if none found
    */
-  private function validateEmail(string $email, string $pass) : array
+  private function validateEmail(
+    #[\SensitiveParameter]
+    string $email,
+    #[\SensitiveParameter]
+    string $pass) : array
   {
     $valid_usernames = array();
 
@@ -166,62 +185,62 @@ class AuthDb extends Auth
   }
 
 
-  // Return an array of users, indexed by 'username' and 'display_name'
-  public function getUsernames() : array
-  {
-    $sql = "SELECT name AS username,
-                   CASE
-                       WHEN display_name IS NOT NULL AND display_name!='' THEN display_name
-                       ELSE name
-                   END
-                   AS display_name
-              FROM " . _tbl('users') . "
-          ORDER BY display_name";
-
-    $res = db()->query($sql);
-
-    $users =  $res->all_rows_keyed();
-
-    // Although the users are probably already sorted, we sort them again because MRBS
-    // offers an option for sorting by first or last name.
-    self::sortUsers($users);
-
-    return $users;
-  }
-
-
   // Return an array of all users
   public function getUsers() : array
   {
-    $sql = "SELECT *
+    // Add in an extra column, last_updated, which is the SQL timestamp converted to a UNIX
+    // timestamp.  We do the conversion in the SQL query so that it is converted using the
+    // same timezone that it was stored with.
+    $sql = "SELECT *, ". $this->connection()->syntax_timestamp_to_unix("timestamp") . " AS last_updated
               FROM " . _tbl('users') . "
              ORDER BY name";
 
-    $res = db()->query($sql);
+    $res = $this->connection()->query($sql);
 
-    return $res->all_rows_keyed();
+    $result = $res->all_rows_keyed();
+
+    foreach ($result as &$row)
+    {
+      row_cast_columns($row, 'users');
+      // Turn the last_updated column into an int (some MySQL drivers will return a string,
+      // and it won't have been caught by row_cast_columns() as it's a derived result).
+      $row['last_updated'] = intval($row['last_updated']);
+    }
+
+    return $result;
   }
 
 
-  // Checks whether validation of a user by email address is possible and allowed.
+  /**
+   */
+  public function canCreateUsers() : bool
+  {
+    return true;
+  }
+
+
+  /**
+   */
   public function canValidateByEmail() : bool
   {
     return true;
   }
 
 
-  // Checks whether the method has a password reset facility
+  /**
+   */
   public function canResetPassword() : bool
   {
     return true;
   }
 
 
-  // Checks whether the password by reset by supplying an email address.
-  // We allow resetting by email, even if there are multiple users with the
-  // same email address.
+  /**
+   */
   public function canResetByEmail() : bool
   {
+    // We allow resetting by email, even if there are multiple users with the
+    // same email address.
     return $this->canValidateByEmail();
   }
 
@@ -253,7 +272,7 @@ class AuthDb extends Auth
       {
         // Check that the email addresses are the same
         if (!empty($possible_users) &&
-            (utf8_strtolower($possible_users[0]['email']) !== utf8_strtolower($login)))
+            (mb_strtolower($possible_users[0]['email']) !== mb_strtolower($login)))
         {
           return false;
         }
@@ -281,7 +300,12 @@ class AuthDb extends Auth
   }
 
 
-  public function resetPassword(?string $username, ?string $key, ?string $password) : bool
+  public function resetPassword(
+    #[\SensitiveParameter]
+    ?string $username,
+    ?string $key,
+    #[\SensitiveParameter]
+    ?string $password) : bool
   {
     // Check that we've got a password and we're allowed to reset the password
     if (!isset($password) || !auth()->isValidReset($username, $key))
@@ -301,7 +325,7 @@ class AuthDb extends Auth
         ':name' => $username
       );
 
-    db()->command($sql, $sql_params);
+    $this->connection()->command($sql, $sql_params);
 
     return true;
   }
@@ -320,7 +344,7 @@ class AuthDb extends Auth
              LIMIT 1";
 
     $sql_params = array(':name' => $user);
-    $res = db()->query($sql,$sql_params);
+    $res = $this->connection()->query($sql,$sql_params);
 
     // Check we've found a row
     if ($res->count() == 0)
@@ -342,33 +366,43 @@ class AuthDb extends Auth
 
 
   // Returns an unsorted array of registrants display names
-  protected function getRegistrantsDisplayNamesUnsortedWithout(int $id) : array
+  protected function getRegistrantsDisplayNamesUnsortedWithout(int $id, bool $with_registrant_username) : array
   {
     // For the 'db' auth type we can improve performance by doing a single query
     // on the participants table joined with the users table.  (Actually it's two
     // queries in a UNION: one getting the rows where there isn't an entry in the
     // users table and another the rows where there is.)
-    $sql = "SELECT P.username as display_name
+    $sql = "SELECT P.username as username,
+                   P.username as display_name
               FROM " . _tbl('participants') . " P
          LEFT JOIN " . _tbl('users') . " U
                 ON P.username=U.name
              WHERE P.entry_id=:entry_id
                AND (U.display_name IS NULL OR U.display_name='')
              UNION
-            SELECT U.display_name
+            SELECT U.name as username,
+                   U.display_name as display_name
               FROM " . _tbl('participants') . " P
          LEFT JOIN " . _tbl('users') . " U
                 ON P.username=U.name
              WHERE P.entry_id=:entry_id
                AND U.display_name IS NOT NULL AND U.display_name!=''";
 
-    return db()->query_array($sql, array(':entry_id' => $id));
+    $result = array();
+    $res = $this->connection()->query($sql, array(':entry_id' => $id));
+
+    while (false !== ($row = $res->next_row_keyed()))
+    {
+      $result[] = ($with_registrant_username) ? format_compound_name($row['username'], $row['display_name']) : $row['display_name'];
+    }
+
+    return $result;
   }
 
 
   // Returns an unsorted array of registrants display names, including, if
   // different, the display name of the person that registered them.
-  protected function getRegistrantsDisplayNamesUnsortedWith(int $id) : array
+  protected function getRegistrantsDisplayNamesUnsortedWith(int $id, bool $with_registrant_username) : array
   {
     // For the 'db' auth type we can improve performance by doing a single query
     // on the participants table joined with the users table.  (Actually it's four
@@ -435,19 +469,36 @@ class AuthDb extends Auth
 
     $result = array();
 
-    $res =  db()->query($sql, array(':entry_id' => $id));
+    $res =  $this->connection()->query($sql, array(':entry_id' => $id));
 
     while (false !== ($row = $res->next_row_keyed()))
     {
       if ($row['registrant_username'] === $row['create_by_username'])
       {
-        $result[] = $row['registrant_display_name'];
+        if ($with_registrant_username)
+        {
+          $result[] = format_compound_name($row['registrant_username'], $row['registrant_display_name']);
+        }
+        else
+        {
+          $result[] = $row['registrant_display_name'];
+        }
       }
       else
       {
-        $result[] = get_vocab('registrant_registered_by',
-                              $row['registrant_display_name'],
-                              $row['create_by_display_name']);
+        if ($with_registrant_username && ($row['registrant_username'] !== $row['registrant_display_name']))
+        {
+          $result[] = get_vocab('registrant_username_and_registered_by',
+                                $row['registrant_username'],
+                                $row['registrant_display_name'],
+                                $row['create_by_display_name']);
+        }
+        else
+        {
+          $result[] = get_vocab('registrant_registered_by',
+                                $row['registrant_display_name'],
+                                $row['create_by_display_name']);
+        }
       }
     }
 
@@ -455,15 +506,18 @@ class AuthDb extends Auth
   }
 
 
-  protected function getRegistrantsDisplayNamesUnsorted(int $id, bool $with_registered_by) : array
+  /**
+   * @return string[]
+   */
+  protected function getRegistrantsDisplayNamesUnsorted(int $id, bool $with_registered_by, $with_registrant_username) : array
   {
     if ($with_registered_by)
     {
-      return $this->getRegistrantsDisplayNamesUnsortedWith($id);
+      return $this->getRegistrantsDisplayNamesUnsortedWith($id, $with_registrant_username);
     }
     else
     {
-      return $this->getRegistrantsDisplayNamesUnsortedWithout($id);
+      return $this->getRegistrantsDisplayNamesUnsortedWithout($id, $with_registrant_username);
     }
   }
 
@@ -490,7 +544,7 @@ class AuthDb extends Auth
         ($users[0]['display_name'] !== ''))
     {
       $mailer = new PHPMailer();
-      $mailer->CharSet = get_mail_charset();
+      $mailer->CharSet = Language::MAIL_CHARSET;
       // Note that addrFormat() returns a MIME-encoded address
       $addresses['to'] = $mailer->addrFormat(array($users[0]['email'], $users[0]['display_name']));
       $name = $users[0]['display_name'];
@@ -527,11 +581,10 @@ class AuthDb extends Auth
     MailQueue::add(
         $addresses,
         $subject,
-        array('content' => strip_tags($body)),
-        array('content' => $body,
-          'cid'     => generate_global_uid("html")),
+        strip_tags($body),
+        $body,
         null,
-        get_mail_charset()
+        Language::MAIL_CHARSET
       );
 
     return true;
@@ -563,7 +616,7 @@ class AuthDb extends Auth
         ':reset_key_expiry' => time() + $auth['db']['reset_key_expiry']
       );
 
-    db()->command($sql, $sql_params);
+    $this->connection()->command($sql, $sql_params);
 
     return true;
   }
@@ -576,7 +629,7 @@ class AuthDb extends Auth
              WHERE name=:name
              LIMIT 1";
 
-    $result = db()->query($sql, array(':name' => $username));
+    $result = $this->connection()->query($sql, array(':name' => $username));
 
     // The username doesn't exist - return NULL
     if ($result->count() === 0)
@@ -588,14 +641,14 @@ class AuthDb extends Auth
   }
 
 
-  private function getUserByUserId(int $id) : ?array
+  public function getUserByUserId(int $id) : ?User
   {
     $sql = "SELECT *
               FROM " . _tbl('users') . "
              WHERE id=:id
              LIMIT 1";
 
-    $result = db()->query($sql, array(':id' => $id));
+    $result = $this->connection()->query($sql, array(':id' => $id));
 
     // The username doesn't exist - return NULL
     if ($result->count() === 0)
@@ -603,7 +656,44 @@ class AuthDb extends Auth
       return null;
     }
 
-    return $result->next_row_keyed();
+    // The username does exist - return a User object
+    $user = new User();
+    $row = $result->next_row_keyed();
+
+    // $user->level and $user->display_name will be set as part of this
+    foreach ($row as $key => $value)
+    {
+      if ($key == 'name')
+      {
+        $user->username = $value;
+      }
+      $user->$key = $value;
+    }
+
+    return $user;
+  }
+
+
+  public function getUsernameByEmail(string $email) : ?string
+  {
+    $sql = "SELECT name
+              FROM " . _tbl('users') . "
+             WHERE email=?";
+
+    $res = $this->connection()->query($sql, array($email));
+
+    if ($res->count() == 0)
+    {
+      return null;
+    }
+
+    if ($res->count() > 1)
+    {
+      // Could maybe do something better here
+      trigger_error("Email address not unique", E_USER_NOTICE);
+    }
+    $row = $res->next_row_keyed();
+    return $row['name'];
   }
 
 
@@ -617,18 +707,18 @@ class AuthDb extends Auth
 
     $result = array();
 
-    // For the moment we will assume that email addresses are case insensitive.   Whilst it is true
-    // on most systems, it isn't always true.  The domain is case insensitive but the local-part can
-    // be case sensitive.  But before we can take account of this, the email addresses in the database
+    // For the moment we will assume that email addresses are case-insensitive.   Whilst it is true
+    // on most systems, it isn't always true.  The domain is case-insensitive but the local-part can
+    // be case-sensitive.  But before we can take account of this, the email addresses in the database
     // need to be normalised so that all the domain names are stored in lower case.  Then it will be
-    // possible to do a case sensitive comparison.
-    if (utf8_strpos($email, '@') === false)
+    // possible to do a case-sensitive comparison.
+    if (mb_strpos($email, '@') === false)
     {
       if (!empty($auth['allow_local_part_email']))
       {
         // We're just checking the local-part of the email address
         $sql_params = array($email);
-        $condition = "LOWER(?)=LOWER(" . db()->syntax_simple_split('email', '@', 1, $sql_params) .")";
+        $condition = "LOWER(?)=LOWER(" . $this->connection()->syntax_simple_split('email', '@', 1, $sql_params) .")";
       }
       else
       {
@@ -645,7 +735,7 @@ class AuthDb extends Auth
       }
       // Special case for Gmail addresses: ignore dots in the local part and treat gmail.com and
       // googlemail.com as equivalent domains.
-      elseif (in_array(utf8_strtolower($address['domain']), array('gmail.com', 'googlemail.com')))
+      elseif (in_array(mb_strtolower($address['domain']), array('gmail.com', 'googlemail.com')))
       {
         $sql_params = array(str_replace('.', '', $address['local']));
         $sql_params[] = $sql_params[0];
@@ -664,7 +754,7 @@ class AuthDb extends Auth
               FROM " . _tbl('users') . "
              WHERE $condition";
 
-    $res = db()->query($sql, $sql_params);
+    $res = $this->connection()->query($sql, $sql_params);
 
     while (false !== ($row = $res->next_row_keyed()))
     {
@@ -675,14 +765,18 @@ class AuthDb extends Auth
   }
 
 
-  private function rehash(string $password, string $column_name, string $column_value) : void
+  private function rehash(
+    #[\SensitiveParameter]
+    string $password,
+    string $column_name,
+    string $column_value) : void
   {
     $sql_params = array(password_hash($password, PASSWORD_DEFAULT));
 
     switch ($column_name)
     {
       case 'name':
-        $condition = db()->syntax_casesensitive_equals($column_name, utf8_strtolower($column_value), $sql_params);
+        $condition = $this->connection()->syntax_casesensitive_equals($column_name, mb_strtolower($column_value), $sql_params);
         break;
       case 'email':
         // For the moment we will assume that email addresses are case insensitive.   Whilst it is true
@@ -703,7 +797,7 @@ class AuthDb extends Auth
                SET password_hash=?
              WHERE $condition";
 
-    db()->command($sql, $sql_params);
+    $this->connection()->command($sql, $sql_params);
   }
 
 
@@ -711,7 +805,12 @@ class AuthDb extends Auth
   // where $column_name=$column_value.  Typically $column_name will be either
   // 'name' or 'email'.
   // Returns a boolean: true if they match, otherwise false.
-  private function checkPassword(string $password, string $password_hash, string $column_name, string $column_value) : bool
+  private function checkPassword(
+    #[\SensitiveParameter]
+    string $password,
+    string $password_hash,
+    string $column_name,
+    string $column_value) : bool
   {
     $result = false;
     $do_rehash = false;

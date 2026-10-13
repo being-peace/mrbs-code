@@ -1,14 +1,18 @@
 <?php
+declare(strict_types=1);
 namespace MRBS;
 
 require "defaultincludes.inc";
 
 use MRBS\Form\Form;
+use UnexpectedValueException;
 
 
 // Cancel a user's registration
-function cancel($registration_id)
+function cancel_registration(int $registration_id) : void
 {
+  global $auth;
+
   $registration = get_registration_by_id($registration_id);
 
   if (!isset($registration))
@@ -19,9 +23,11 @@ function cancel($registration_id)
   $entry = get_entry_by_id($registration['entry_id']);
 
   // Check that the user is authorised for this operation
+  $mrbs_user = session()->getCurrentUser();
   if (!isset($entry) ||
       (!getWritable($registration['username'], $entry['room_id']) &&
-       !getWritable($registration['create_by'], $entry['room_id'])))
+       !getWritable($registration['create_by'], $entry['room_id']) &&
+       !(isset($mrbs_user) && $auth['users_can_delete_others_registrations'])))
   {
     return;
   }
@@ -45,7 +51,7 @@ function cancel($registration_id)
 
 
 // Register a user for an event
-function register($username, $event_id)
+function register_user(string $username, int $event_id) : void
 {
   $entry = get_entry_by_id($event_id);
 
@@ -55,7 +61,7 @@ function register($username, $event_id)
     return;
   }
 
-  // Check that the user is an an admin or else that the entry is open for registration
+  // Check that the user is an admin or else that the entry is open for registration
   if (!is_book_admin($entry['room_id']) && !entry_registration_is_open($entry))
   {
     return;
@@ -81,17 +87,11 @@ function register($username, $event_id)
         $mrbs_user = session()->getCurrentUser();
         $mrbs_username = (isset($mrbs_user)) ? $mrbs_user->username : null;
         // then register the user
-        $sql = "INSERT INTO " . _tbl('participants') . " (entry_id, username, create_by, registered)
-                     VALUES (:entry_id, :username, :create_by, :registered)";
-
-        $sql_params = array(
-          ':entry_id'   => $event_id,
-          ':username'   => $username,
-          ':create_by'  => $mrbs_username,
-          ':registered' => time()
-        );
-
-        db()->command($sql, $sql_params);
+        add_registrant($event_id, array(
+          'username'    => $username,
+          'create_by'   => $mrbs_username,
+          'registered'  => time()
+        ));
       }
     }
   }
@@ -109,23 +109,42 @@ checkAuthorised(this_page());
 // Get the form vars
 $action = get_form_var('action', 'string');
 $event_id = get_form_var('event_id', 'int');
-$returl = get_form_var('returl', 'string');
+$returl = get_form_var('returl', 'url_local', 'index.php');
 
 // Take the appropriate action.  The individual functions check that the user
 // is authorised to take the action.
-switch ($action)
+try
 {
-  case 'cancel':
-    $registration_id = get_form_var('registration_id', 'int');
-    cancel($registration_id);
-    break;
-  case 'register':
-    $username = get_form_var('username', 'string');
-    register($username, $event_id);
-    break;
-  default:
-    trigger_error("Unknown action '$action'", E_USER_WARNING);
-    break;
+  switch ($action)
+  {
+    case 'cancel':
+      $registration_id = get_form_var('registration_id', 'int');
+      if (!isset($registration_id))
+      {
+        throw new UnexpectedValueException("No registration_id received from form.");
+      }
+      cancel_registration($registration_id);
+      break;
+    case 'register':
+      $username = get_form_var('username', 'string');
+      if (!isset($username) || ($username === ''))
+      {
+        throw new UnexpectedValueException("No username received from form.");
+      }
+      if (!isset($event_id))
+      {
+        throw new UnexpectedValueException("No event_id received from form.");
+      }
+      register_user($username, $event_id);
+      break;
+    default:
+      throw new UnexpectedValueException("Unknown action '$action'");
+      break;
+  }
+}
+catch (UnexpectedValueException $e)
+{
+  trigger_error($e->getMessage(), E_USER_WARNING);
 }
 
 location_header($returl);

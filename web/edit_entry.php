@@ -1,29 +1,29 @@
 <?php
+declare(strict_types=1);
 namespace MRBS;
 
-use MRBS\Form\FieldTimeWithUnits;
-use MRBS\Form\Form;
+use MRBS\Errors\Errors;
 use MRBS\Form\ElementDiv;
 use MRBS\Form\ElementFieldset;
 use MRBS\Form\ElementInputCheckbox;
 use MRBS\Form\ElementInputDate;
 use MRBS\Form\ElementInputHidden;
-use MRBS\Form\ElementInputNumber;
 use MRBS\Form\ElementInputRadio;
 use MRBS\Form\ElementInputSubmit;
 use MRBS\Form\ElementLabel;
 use MRBS\Form\ElementSelect;
 use MRBS\Form\ElementSpan;
+use MRBS\Form\Field;
 use MRBS\Form\FieldDiv;
 use MRBS\Form\FieldInputCheckbox;
 use MRBS\Form\FieldInputCheckboxGroup;
-use MRBS\Form\FieldInputDatalist;
 use MRBS\Form\FieldInputDate;
 use MRBS\Form\FieldInputNumber;
 use MRBS\Form\FieldInputRadioGroup;
-use MRBS\Form\FieldInputSubmit;
-use MRBS\Form\FieldInputText;
 use MRBS\Form\FieldSelect;
+use MRBS\Form\FieldTimeWithUnits;
+use MRBS\Form\Form;
+use MRBS\ICalendar\RFC5545;
 
 // If you want to add some extra columns to the entry and repeat tables to
 // record extra details about bookings then you can do so and this page should
@@ -111,7 +111,7 @@ foreach ($fields as $field)
 }
 
 
-function get_field_create_by($create_by, $disabled=false)
+function get_field_create_by(string $create_by, bool $disabled=false) : Field
 {
   $params = array('label'    => get_vocab('createdby'),
                   'name'     => 'create_by',
@@ -124,7 +124,7 @@ function get_field_create_by($create_by, $disabled=false)
 }
 
 
-function get_field_name($value, $disabled=false)
+function get_field_name(string $value, bool $disabled=false) : Field
 {
   $params = array('label'    => get_vocab('namebooker'),
                   'name'     => 'name',
@@ -137,15 +137,13 @@ function get_field_name($value, $disabled=false)
 }
 
 
-function get_field_description($value, $disabled=false)
+function get_field_description(string $value, int $area_id, bool $disabled=false) : Field
 {
-  global $is_mandatory_field;
-
   $params = array('label'    => get_vocab('fulldescription'),
                   'name'     => 'description',
                   'field'    => 'entry.description',
                   'value'    => $value,
-                  'required' => !empty($is_mandatory_field['entry.description']),
+                  'required' => is_mandatory_field('entry.description', $area_id),
                   'disabled' => $disabled);
 
   return get_field_entry_input($params);
@@ -165,18 +163,13 @@ function get_field_description($value, $disabled=false)
 //                                that $display_none is FALSE.  (This prevents multiple inputs
 //                                of the same name)
 //    $is_start                   Boolean.  Whether this is the start selector.  Default FALSE
-function get_slot_selector($area, $id, $name, $current_s, $display_none=false, $disabled=false, $is_start=false)
+function get_slot_selector(array $area, string $id, string $name, int $current_s, bool $display_none=false, bool $disabled=false, bool $is_start=false) : ElementSelect
 {
   // Check that $resolution is positive to avoid an infinite loop below.
   // (Shouldn't be possible, but just in case ...)
   if (empty($area['resolution']) || ($area['resolution'] < 0))
   {
     throw new \Exception("Internal error - resolution is NULL or <= 0");
-  }
-
-  if ($area['enable_periods'])
-  {
-    $base = 12*SECONDS_PER_HOUR;  // The start of the first period of the day
   }
 
   // Build the options
@@ -197,14 +190,7 @@ function get_slot_selector($area, $id, $name, $current_s, $display_none=false, $
 
   for ($s = $first; $s <= $last; $s += $area['resolution'])
   {
-    if ($area['enable_periods'])
-    {
-      $options[$s] = $area['periods'][intval(($s-$base)/60)];
-    }
-    else
-    {
-      $options[$s] = hour_min($s);
-    }
+    $options[$s] = ($area['enable_periods']) ? $area['periods']->offsetGetByNominalSeconds($s)->name : hour_min($s);
   }
 
   // Make sure that the selected option is within the range of available options.
@@ -241,7 +227,7 @@ function get_slot_selector($area, $id, $name, $current_s, $display_none=false, $
 
 
 // Generate the All Day checkbox for an area
-function get_all_day($area, $input_id, $input_name, $display_none=false, $disabled=false)
+function get_all_day(array $area, string $input_id, string $input_name, bool $display_none=false, bool $disabled=false) : ElementDiv
 {
   global $drag, $id;
 
@@ -283,26 +269,30 @@ function get_all_day($area, $input_id, $input_name, $display_none=false, $disabl
 }
 
 
-function get_field_start_time($value, $disabled=false)
+function get_field_start_time(int $value, bool $disabled=false) : FieldDiv
 {
   global $areas, $area_id;
 
   $date = getbookingdate($value);
   $start_date = format_iso_date($date['year'], $date['mon'], $date['mday']);
   $current_s = (($date['hours'] * 60) + $date['minutes']) * 60;
+  $label = get_vocab('start');
 
   $field = new FieldDiv();
 
   // Generate the live slot selector and all day checkbox
   $element_date = new ElementInputDate();
-  $element_date->setAttributes(array('id'       => 'start_date',
-                                     'name'     => 'start_date',
-                                     'value'    => $start_date,
-                                     'disabled' => $disabled,
-                                     'required' => true));
+  $element_date->setAttributes(array(
+      'id'          => 'start_date',
+      'name'        => 'start_date',
+      'value'       => $start_date,
+      'aria-label'  => $label,
+      'disabled'    => $disabled,
+      'required'    => true)
+    );
 
   $field->setAttribute('class', 'start_end')
-        ->setLabel(get_vocab('start'))
+        ->setLabel($label)
         ->addControlElement($element_date)
         ->addControlElement(get_slot_selector($areas[$area_id],
                                               'start_seconds',
@@ -338,7 +328,7 @@ function get_field_start_time($value, $disabled=false)
 }
 
 
-function get_field_end_time($value, $disabled=false)
+function get_field_end_time(int $value, bool $disabled=false) : FieldDiv
 {
   global $areas, $area_id;
   global $multiday_allowed;
@@ -346,6 +336,7 @@ function get_field_end_time($value, $disabled=false)
   $date = getbookingdate($value, true);
   $end_date = format_iso_date($date['year'], $date['mon'], $date['mday']);
   $current_s = (($date['hours'] * 60) + $date['minutes']) * 60;
+  $label = get_vocab('end');
 
   $field = new FieldDiv();
 
@@ -354,23 +345,27 @@ function get_field_end_time($value, $disabled=false)
   // so subtract one period because the "end" period is actually the beginning
   // of the last period booked
   $element_date = new ElementInputDate();
-  $element_date->setAttributes(array('id'       => 'end_date',
-                                     'name'     => 'end_date',
-                                     'value'    => $end_date,
-                                     'disabled' => $disabled));
+  $element_date->setAttributes(array(
+      'id'          => 'end_date',
+      'name'        => 'end_date',
+      'value'       => $end_date,
+      'aria-label'  => $label,
+      'disabled'    => $disabled,
+      'required'    => true
+    ));
 
-  // Don't show the end date if multiday bookings are not allowed
+  // Don't show the end date if multi-day bookings are not allowed
   if (!$multiday_allowed)
   {
-    $element_date->setAttributes(array('style'    => 'visibility: hidden',
-                                       'disabled' => true));
+    $element_date->setAttribute('disabled', true)
+                 ->addClass('hidden_field');
   }
 
   $a = $areas[$area_id];
   $this_current_s = ($a['enable_periods']) ? $current_s - $a['resolution'] : $current_s;
 
   $field->setAttribute('class', 'start_end')
-        ->setLabel(get_vocab('end'))
+        ->setLabel($label)
         ->addControlElement($element_date)
         ->addControlElement(get_slot_selector($areas[$area_id],
                                               'end_seconds',
@@ -403,7 +398,7 @@ function get_field_end_time($value, $disabled=false)
 }
 
 
-function get_field_areas($value, $disabled=false)
+function get_field_areas(int $value, bool $disabled=false) : ?FieldSelect
 {
   global $areas;
 
@@ -436,8 +431,8 @@ function get_field_areas($value, $disabled=false)
   return $field;
 }
 
-
-function get_field_rooms($value, $disabled=false)
+// $value can be a scalar or an array
+function get_field_rooms($value, bool $disabled=false) : FieldSelect
 {
   global $multiroom_allowed, $area_id, $areas, $rooms;
 
@@ -498,10 +493,8 @@ function get_field_rooms($value, $disabled=false)
 }
 
 
-function get_field_type($value, $disabled=false)
+function get_field_type(string $value, int $area_id, bool $disabled=false) : ?FieldSelect
 {
-  global $is_mandatory_field;
-
   // Get the options
   $options = get_type_options(is_book_admin());
 
@@ -511,9 +504,10 @@ function get_field_type($value, $disabled=false)
   {
     return null;
   }
-  
-  // If it's a mandatory field add a blank option to force a selection
-  if (!empty($is_mandatory_field['entry.type']))
+
+  $required = is_mandatory_field('entry.type', $area_id);
+  // If it's a mandatory field, add a blank option to force a selection
+  if ($required)
   {
     $options = array('' => get_type_vocab('')) + $options;
   }
@@ -523,14 +517,14 @@ function get_field_type($value, $disabled=false)
   $field->setLabel(get_vocab('type'))
         ->setControlAttributes(array('name'     => 'type',
                                      'disabled' => $disabled,
-                                     'required' => !empty($is_mandatory_field['entry.type'])))
+                                     'required' => $required))
         ->addSelectOptions($options, $value, true);
 
   return $field;
 }
 
 
-function get_field_confirmation_status($value, $disabled=false)
+function get_field_confirmation_status(bool $value, bool $disabled=false) : ?FieldInputRadioGroup
 {
   global $confirmation_enabled;
 
@@ -553,7 +547,7 @@ function get_field_confirmation_status($value, $disabled=false)
 }
 
 
-function get_field_privacy_status($value, $disabled=false)
+function get_field_privacy_status(bool $value, bool $disabled=false) : ?FieldInputRadioGroup
 {
   global $private_enabled, $private_mandatory;
 
@@ -579,10 +573,11 @@ function get_field_privacy_status($value, $disabled=false)
 }
 
 
-function get_field_custom($key, $disabled=false)
+function get_field_custom(string $key, int $area_id, bool $disabled=false)
 {
   global $custom_fields, $custom_fields_map;
-  global $is_mandatory_field, $text_input_max;
+
+  // TODO: have a common way of generating custom fields for all tables
 
   // First check that the custom field exists.  It normally will, but won't if
   // $edit_entry_field_order contains a value for which a field doesn't exist.
@@ -592,6 +587,7 @@ function get_field_custom($key, $disabled=false)
   }
 
   $custom_field = $custom_fields_map[$key];
+  $required = is_mandatory_field('entry.' . $key, $area_id);
 
   // Output a checkbox if it's a boolean or integer <= 2 bytes (which we will
   // assume are intended to be booleans)
@@ -600,14 +596,9 @@ function get_field_custom($key, $disabled=false)
   {
     $class = 'FieldInputCheckbox';
   }
-  // Output a textarea if it's a character string longer than the limit for a
-  // text input
-  elseif (($custom_field['nature'] == 'character') &&
-           isset($custom_field['length']) &&
-           ($custom_field['length'] > $text_input_max))
+  elseif ($custom_field['type'] == 'date')
   {
-    // HTML5 does not allow a pattern attribute for the textarea element
-    $class = 'FieldTextarea';
+    $class = 'FieldInputDate';
   }
   // Otherwise check if it's an integer field
   elseif ((($custom_field['nature'] == 'integer') && ($custom_field['length'] > 2)) ||
@@ -615,15 +606,15 @@ function get_field_custom($key, $disabled=false)
   {
     $class = 'FieldInputNumber';
   }
-  // Otherwise it's a text input of some kind (which includes <select>s and
-  // <datalist>s)
+  // Otherwise it's a text input of some kind (which includes <select>s,
+  // <datalist>s and <textarea>s)
   else
   {
     $params = array('label'    => get_loc_field_name(_tbl('entry'), $key),
                     'name'     => VAR_PREFIX . $key,
                     'field'    => "entry.$key",
                     'value'    => (isset($custom_fields[$key])) ? $custom_fields[$key] : NULL,
-                    'required' => !empty($is_mandatory_field["entry.$key"]),
+                    'required' => $required,
                     'disabled' => $disabled);
     return get_field_entry_input($params);
   }
@@ -634,11 +625,12 @@ function get_field_custom($key, $disabled=false)
   $field->setLabel(get_loc_field_name(_tbl('entry'), $key))
         ->setControlAttributes(array('name'     => VAR_PREFIX . $key,
                                      'disabled' => $disabled,
-                                     'required' => !empty($is_mandatory_field["entry.$key"])));
+                                     'required' => $required));
 
   if ($custom_field['nature'] == 'decimal')
   {
     list( , $decimal_places) = explode(',', $custom_field['length']);
+    $decimal_places = (int) $decimal_places;
     $step = pow(10, -$decimal_places);
     $step = number_format($step, $decimal_places);
     $field->setControlAttribute('step', $step);
@@ -669,7 +661,7 @@ function get_field_custom($key, $disabled=false)
 
 
 // Repeat type
-function get_field_rep_type($value, $disabled=false)
+function get_field_rep_type(RepeatRule $repeat_rule, bool $disabled=false) : FieldDiv
 {
   $field = new FieldDiv();
 
@@ -677,32 +669,32 @@ function get_field_rep_type($value, $disabled=false)
                               'class' => 'multiline'))
         ->setLabel(get_vocab('rep_type'));
 
-  foreach (array(REP_NONE, REP_DAILY, REP_WEEKLY, REP_MONTHLY, REP_YEARLY) as $i)
+  foreach (RepeatRule::REPEAT_TYPES as $i)
   {
     $options[$i] = get_vocab("rep_type_$i");
   }
   $radio_group = new ElementDiv();
   $radio_group->setAttribute('class', 'group long')
-              ->addRadioOptions($options, 'rep_type', $value, true);
+              ->addRadioOptions($options, 'rep_type', $repeat_rule->getType(), true);
 
   $field->addControlElement($radio_group);
 
   // No point in showing anything more if the repeat fields are disabled
   // and the repeat type is None
-  if (!$disabled || ($value != REP_NONE))
+  if (!$disabled || ($repeat_rule->getType() != RepeatRule::NONE))
   {
     // And no point in showing the weekly repeat details if the repeat
     // fields are disabled and the repeat type is not a weekly repeat
-    if (!$disabled || ($value == REP_WEEKLY))
+    if (!$disabled || ($repeat_rule->getType() == RepeatRule::WEEKLY))
     {
-      $field->addControlElement(get_fieldset_rep_weekly_details($disabled));
+      $field->addControlElement(get_fieldset_rep_weekly_details($repeat_rule, $disabled));
     }
 
     // And no point in showing the monthly repeat details if the repeat
     // fields are disabled and the repeat type is not a monthly repeat
-    if (!$disabled || ($value == REP_MONTHLY))
+    if (!$disabled || ($repeat_rule->getType() == RepeatRule::MONTHLY))
     {
-      $field->addControlElement(get_fieldset_rep_monthly_details($disabled));
+      $field->addControlElement(get_fieldset_rep_monthly_details($repeat_rule, $disabled));
     }
   }
 
@@ -711,46 +703,43 @@ function get_field_rep_type($value, $disabled=false)
 
 
 // Repeat day
-function get_field_rep_day($disabled=false)
+function get_field_rep_days(RepeatRule $repeat_rule, bool $disabled=false) : FieldInputCheckboxGroup
 {
-  global $weekstarts, $strftime_format;
-  global $rep_day;
+  global $weekstarts, $datetime_formats;
 
   for ($i = 0; $i < DAYS_PER_WEEK; $i++)
   {
     // Display day name checkboxes according to language and preferred weekday start.
     $wday = ($i + $weekstarts) % DAYS_PER_WEEK;
     // We need to ensure the index is a string to force the array to be associative
-    $options[$wday] = day_name($wday, $strftime_format['dayname_edit']);
+    $options[$wday] = day_name($wday, $datetime_formats['day_name_edit']);
   }
 
   $field = new FieldInputCheckboxGroup();
 
   $field->setAttribute('id', 'rep_day')
         ->setLabel(get_vocab('rep_rep_day'))
-        ->addCheckboxOptions($options, 'rep_day[]', $rep_day, true, $disabled);
+        ->addCheckboxOptions($options, 'rep_day[]', $repeat_rule->getDays(), true, $disabled);
 
   return $field;
 }
 
 
-function get_fieldset_rep_weekly_details($disabled=false)
+function get_fieldset_rep_weekly_details(RepeatRule $repeat_rule, bool $disabled=false) : ElementFieldset
 {
   $fieldset = new ElementFieldset();
 
   $fieldset->setAttributes(array('class' => 'rep_type_details js_none',
                                  'id'    => 'rep_weekly'));
-  $fieldset->addElement(get_field_rep_day($disabled));
+  $fieldset->addElement(get_field_rep_days($repeat_rule, $disabled));
 
   return $fieldset;
 }
 
 
 // MONTH ABSOLUTE (eg Day 15 of every month)
-function get_fieldset_month_absolute($disabled=false)
+function get_fieldset_month_absolute(RepeatRule $repeat_rule, bool $disabled=false) : ElementFieldset
 {
-  global $month_type, $month_absolute;
-
   $fieldset = new ElementFieldset();
 
   $label = new ElementLabel();
@@ -759,8 +748,8 @@ function get_fieldset_month_absolute($disabled=false)
 
   $radio = new ElementInputRadio();
   $radio->setAttributes(array('name'     => 'month_type',
-                              'value'    => REP_MONTH_ABSOLUTE,
-                              'checked'  => ($month_type == REP_MONTH_ABSOLUTE),
+                              'value'    => RepeatRule::MONTHLY_ABSOLUTE,
+                              'checked'  => ($repeat_rule->getMonthlyType() == RepeatRule::MONTHLY_ABSOLUTE),
                               'disabled' => $disabled));
 
   $label->addElement($radio);
@@ -777,7 +766,7 @@ function get_fieldset_month_absolute($disabled=false)
   $select = new ElementSelect();
   $select->setAttributes(array('name'     => 'month_absolute',
                                'disabled' => $disabled))
-         ->addSelectOptions($options, $month_absolute, false);
+         ->addSelectOptions($options, $repeat_rule->getMonthlyAbsolute(), false);
 
   $fieldset->addElement($select);
 
@@ -786,10 +775,9 @@ function get_fieldset_month_absolute($disabled=false)
 
 
 // MONTH RELATIVE (eg the second Thursday of every month)
-function get_fieldset_month_relative($disabled=false)
+function get_fieldset_month_relative(RepeatRule $repeat_rule, bool $disabled=false) : ElementFieldset
 {
-  global $month_type, $month_relative_ord, $month_relative_day;
-  global $weekstarts, $RFC_5545_days;
+  global $weekstarts;
 
   $fieldset = new ElementFieldset();
 
@@ -799,8 +787,8 @@ function get_fieldset_month_relative($disabled=false)
 
   $radio = new ElementInputRadio();
   $radio->setAttributes(array('name'     => 'month_type',
-                              'value'    => REP_MONTH_RELATIVE,
-                              'checked'  => ($month_type == REP_MONTH_RELATIVE),
+                              'value'    => RepeatRule::MONTHLY_RELATIVE,
+                              'checked'  => ($repeat_rule->getMonthlyType() == RepeatRule::MONTHLY_RELATIVE),
                               'disabled' => $disabled));
 
   $label->addElement($radio);
@@ -810,6 +798,7 @@ function get_fieldset_month_relative($disabled=false)
   // Note: the select box order does not internationalise very well and could
   // do with revisiting.   It assumes all languages have the same order as English
   // eg "the second Wednesday" which is probably not true.
+  list('ordinal' => $month_relative_ord, 'day' => $month_relative_day) = RFC5545::parseByday($repeat_rule->getMonthlyRelative());
   $options = array();
   foreach (array('1', '2', '3', '4', '5', '-1', '-2', '-3', '-4', '-5') as $i)
   {
@@ -826,7 +815,7 @@ function get_fieldset_month_relative($disabled=false)
   for ($i=0; $i<DAYS_PER_WEEK; $i++)
   {
     $i_offset = ($i + $weekstarts)%DAYS_PER_WEEK;
-    $options[$RFC_5545_days[$i_offset]] = day_name($i_offset);
+    $options[RFC5545::DAYS[$i_offset]] = day_name($i_offset);
   }
   $select = new ElementSelect();
   $select->setAttributes(array('name'     => 'month_relative_day',
@@ -839,65 +828,59 @@ function get_fieldset_month_relative($disabled=false)
 }
 
 
-function get_fieldset_rep_monthly_details($disabled=false)
+function get_fieldset_rep_monthly_details(RepeatRule $repeat_rule, bool $disabled=false) : ElementFieldset
 {
-  global $month_type;
-
   $fieldset = new ElementFieldset();
-
-  // If the existing repeat type is other than a monthly repeat, we'll
-  // need to define a default month type in case the user decides to change
-  // to a monthly repeat
-  if (!isset($month_type))
-  {
-    $month_type = REP_MONTH_ABSOLUTE;
-  }
 
   $fieldset->setAttributes(array('class' => 'rep_type_details js_none',
                                  'id'    => 'rep_monthly'));
-  $fieldset->addElement(get_fieldset_month_absolute($disabled))
-           ->addElement(get_fieldset_month_relative($disabled));
+  $fieldset->addElement(get_fieldset_month_absolute($repeat_rule, $disabled))
+           ->addElement(get_fieldset_month_relative($repeat_rule, $disabled));
 
   return $fieldset;
 }
 
 
-function get_field_rep_end_date($disabled=false)
+// $min is the minimum date for the repeat end date
+function get_field_rep_end_date(RepeatRule $repeat_rule, bool $disabled=false, ?DateTime $min=null) : FieldInputDate
 {
-  global $rep_end_year, $rep_end_month, $rep_end_day;
-
   $field = new FieldInputDate();
 
   $field->setLabel(get_vocab('rep_end_date'))
         ->setControlAttributes(array('name'     => 'rep_end_date',
-                                     'value'    => format_iso_date($rep_end_year, $rep_end_month, $rep_end_day),
+                                     'value'    => $repeat_rule->getEndDate()->getISODate(),
                                      'disabled' => $disabled));
+
+  if (isset($min))
+  {
+    // Make it a data-min, rather than a min, attribute because we need to be able to change it using
+    // JavaScript. If we use min and JavaScript is not running, we are stuck with it.
+    $field->setControlAttribute('data-min', $min->getISODate());
+  }
 
   return $field;
 }
 
 
-function get_field_rep_interval($rep_interval, $disabled=false)
+function get_field_rep_interval(RepeatRule $repeat_rule, bool $disabled=false) : FieldInputNumber
 {
-  global $rep_type;
-
   $field = new FieldInputNumber();
 
   $span = new ElementSpan();
   $span->setAttribute('id', 'interval_units')
-       ->setText(get_rep_interval_units($rep_type, $rep_interval));
+       ->setText($repeat_rule->getIntervalUnits());
 
   $field->setLabel(get_vocab('rep_interval'))
         ->setControlAttributes(array('name'     => 'rep_interval',
                                      'min'      => 1,
-                                     'value'    => $rep_interval,
+                                     'value'    => $repeat_rule->getInterval(),
                                      'disabled' => $disabled))
         ->addElement($span);
 
   return $field;
 }
 
-function get_field_skip_conflicts($disabled=false)
+function get_field_skip_conflicts(bool $disabled=false) : ?FieldInputCheckbox
 {
   global $skip_default;
 
@@ -915,15 +898,15 @@ function get_field_skip_conflicts($disabled=false)
   return $field;
 }
 
-function get_fieldset_registration()
+function get_fieldset_registration() : ?ElementFieldset
 {
-  global $enable_registration;
+  global $enable_registration, $enable_registration_users;
   global $allow_registration, $registrant_limit_enabled, $registrant_limit;
   global $registration_opens, $registration_opens_enabled;
   global $registration_closes, $registration_closes_enabled;
   global $enable_periods, $periods_booking_opens;
 
-  if (!$enable_registration || !is_book_admin())
+  if (!$enable_registration || (!$enable_registration_users && !is_book_admin()))
   {
     return null;
   }
@@ -964,7 +947,7 @@ function get_fieldset_registration()
   if ($enable_periods)
   {
     $time = strtotime($periods_booking_opens);
-    $time = utf8_strftime(hour_min_format(), $time);
+    $time = datetime_format(hour_min_format(), $time);
     $in_advance_vocab = get_vocab('in_advance_periods', $time);
   }
   else
@@ -1007,10 +990,10 @@ function get_fieldset_registration()
 }
 
 
-function get_fieldset_repeat()
+// $min is the minimum date for the repeat end date
+function get_fieldset_repeat(RepeatRule $repeat_rule, ?DateTime $min=null) : ElementFieldset
 {
-  global $edit_type, $repeats_allowed;
-  global $rep_type, $rep_interval;
+  global $repeats_allowed;
 
   // If repeats aren't allowed or this is not a series then disable
   // the repeat fields - they're for information only
@@ -1019,21 +1002,21 @@ function get_fieldset_repeat()
   // But we have to cater for the possibility because it could happen if (a) the
   // series was created before the policy was introduced or (b) the user has
   // been demoted since the series was created).
-  $disabled = ($edit_type != "series") || !$repeats_allowed;
+  $disabled = !$repeats_allowed;
 
   $fieldset = new ElementFieldset();
   $fieldset->setAttribute('id', 'rep_info');
 
-  $fieldset->addElement(get_field_rep_type($rep_type, $disabled))
-           ->addElement(get_field_rep_interval($rep_interval, $disabled))
-           ->addElement(get_field_rep_end_date($disabled))
+  $fieldset->addElement(get_field_rep_type($repeat_rule, $disabled))
+           ->addElement(get_field_rep_interval($repeat_rule, $disabled))
+           ->addElement(get_field_rep_end_date($repeat_rule, $disabled, $min))
            ->addElement(get_field_skip_conflicts($disabled));
 
   return $fieldset;
 }
 
 
-function get_fieldset_booking_controls()
+function get_fieldset_booking_controls() : ElementFieldset
 {
   global $mail_settings;
 
@@ -1052,7 +1035,7 @@ function get_fieldset_booking_controls()
 }
 
 
-function get_fieldset_submit_buttons()
+function get_fieldset_submit_buttons() : ElementFieldset
 {
   $fieldset = new ElementFieldset();
 
@@ -1100,7 +1083,7 @@ function get_fieldset_submit_buttons()
 // If $is_end is set then this is the end time and so if the booking day happens to
 // last exactly 24 hours, when there will be two possible answers, we want the later
 // one.
-function getbookingdate($t, $is_end=false)
+function getbookingdate(int $t, bool $is_end=false) : array
 {
   global $eveningends, $eveningends_minutes, $resolution;
 
@@ -1129,14 +1112,14 @@ $hour = get_form_var('hour', 'int');
 $minute = get_form_var('minute', 'int');
 $period = get_form_var('period', 'int');
 $id = get_form_var('id', 'int');
-$copy = get_form_var('copy', 'int');
-$edit_type = get_form_var('edit_type', 'string', '');
-$returl = get_form_var('returl', 'string');
+$copy = get_form_var('copy', 'bool');
+$edit_series = get_form_var('edit_series', 'bool');
+$returl = get_form_var('returl', 'url_local');
 // The following variables are used when coming via a JavaScript drag select
 $drag = get_form_var('drag', 'int');
 $start_seconds = get_form_var('start_seconds', 'int');
 $end_seconds = get_form_var('end_seconds', 'int');
-$selected_rooms = get_form_var('rooms', 'array');
+$selected_rooms = get_form_var('rooms', '[int]');
 $start_date = get_form_var('start_date', 'string');
 $end_date = get_form_var('end_date', 'string');
 // And this comes from edit_entry_handler.php
@@ -1146,17 +1129,18 @@ $back_button = get_form_var('back_button', 'string');
 // Check the CSRF token.
 // Only check the token if the page is accessed via a POST request.  Therefore
 // this page should not take any action, but only display data.
-Form::checkToken($post_only=true);
+Form::checkToken(true);
 
 // Get the return URL.  Need to do this before checkAuthorised().
 // We might be going through edit_entry more than once, for example if we have to log on on the way.  We
 // still need to preserve the original calling page so that once we've completed edit_entry_handler we can
 // go back to the page we started at (rather than going to the default view).  If this is the first time
-// through, then $server['HTTP_REFERER'] holds the original caller.    If this is the second time through
+// through, then $referrer holds the original caller.    If this is the second time through
 // we will have stored it in $returl.
 if (!isset($returl))
 {
-  $returl = isset($server['HTTP_REFERER']) ? $server['HTTP_REFERER'] : '';
+  $referrer = session()->getReferrer();
+  $returl = $referrer ?? '';
 }
 
 // Check the user is authorised for this page
@@ -1191,12 +1175,21 @@ if (isset($start_seconds))
 
 if (isset($start_date))
 {
-  list($year, $month, $day) = explode('-', $start_date);
+  // We'll only have got here from a drag select.  If the end date is not the same
+  // as the start date then it's from the week view and will be a repeat.
+  list($year, $month, $day) = array_map('intval', explode('-', $start_date));
   if (isset($end_date) && ($start_date != $end_date) && $repeats_allowed)
   {
-    $rep_type = REP_DAILY;
-    list($rep_end_year, $rep_end_month, $rep_end_day) = explode('-', $end_date);
+    // The end date that came through from the drag select is actually the repeat end
+    // date, and the real end date will actually be the start date.
+    $rep_type = RepeatRule::DAILY;
+    $rep_end_date = DateTime::createFromFormat(DateTime::ISO8601_DATE, $end_date);
+    $end_date = $start_date;
   }
+}
+else
+{
+  $start_date = format_iso_date($year, $month, $day);
 }
 
 
@@ -1220,7 +1213,7 @@ if (isset($id))
 
   if (is_null($entry))
   {
-    fatal_error(get_vocab("entryid") . $id . get_vocab("not_found"));
+    Errors::fatalError(get_vocab("entryid") . $id . get_vocab("not_found"));
   }
 
   // We've possibly got a new room and area, so we need to update the settings
@@ -1235,21 +1228,11 @@ if (isset($id))
   }
   // Need to clear some data if entry is private and user
   // does not have permission to edit/view details
-  if (isset($copy) && ($mrbs_username != $entry['create_by']))
-  {
-    // Entry being copied by different user
-    // If they don't have rights to view details, clear them
-    $privatewriteable = getWritable($entry['create_by'], $entry['room_id']);
-    $keep_private = (is_private_event($private) && !$privatewriteable);
-  }
-  else
-  {
-    $keep_private = FALSE;
-  }
+  $keep_private = $copy && is_private_event($private) && !getWritable($entry['create_by'], $entry['room_id']);
 
   // default settings
-  $rep_day = array();
-  $rep_type = REP_NONE;
+  $rep_days = array();
+  $rep_type = RepeatRule::NONE;
   $rep_interval = 1;
 
   foreach ($entry as $column => $value)
@@ -1316,7 +1299,7 @@ if (isset($id))
       case 'create_by':
         // If we're copying an existing entry then we need to change the create_by (they could be
         // different if it's an admin doing the copying)
-        $create_by   = (isset($copy)) ? $mrbs_username : $entry['create_by'];
+        $create_by   = ($copy) ? $mrbs_username : $entry['create_by'];
         break;
 
       case 'start_time':
@@ -1334,73 +1317,61 @@ if (isset($id))
     }
   }
 
+  $area_id = get_area($room_id);
 
   if(($entry_type == ENTRY_RPT_ORIGINAL) || ($entry_type == ENTRY_RPT_CHANGED))
   {
-    $sql = "SELECT rep_type, start_time, end_time, end_date, rep_opt, rep_interval,
-                   month_absolute, month_relative
-              FROM " . _tbl('repeat') . "
-             WHERE id=?
-             LIMIT 1";
+    $repeat = get_repeat($rep_id);
 
-    $res = db()->query($sql, array($rep_id));
-
-    if ($res->count() != 1)
+    if (!isset($repeat))
     {
-      fatal_error(get_vocab("repeat_id") . $rep_id . get_vocab("not_found"));
+      Errors::fatalError(get_vocab("repeat_id") . $rep_id . get_vocab("not_found"));
     }
 
-    $row = $res->next_row_keyed();
-    unset($res);
-
-    $rep_type = $row['rep_type'];
+    $rep_type = $repeat['rep_type'];
 
     if (!isset($rep_type))
     {
-      $rep_type = REP_NONE;
+      $rep_type = RepeatRule::NONE;
     }
 
     // If it's a repeating entry get the repeat details
-    if ($rep_type != REP_NONE)
+    if ($rep_type != RepeatRule::NONE)
     {
-      $rep_interval = $row['rep_interval'];
+      $rep_interval = $repeat['rep_interval'];
 
       // If we're editing the series we want the start_time and end_time to be the
       // start and of the first entry of the series, not the start of this entry
-      if ($edit_type == "series")
+      if ($edit_series)
       {
-        $start_time = $row['start_time'];
-        $end_time = $row['end_time'];
+        $start_time = $repeat['start_time'];
+        $end_time = $repeat['end_time'];
       }
 
-      $rep_end_day   = (int)utf8_strftime('%d', $row['end_date']);
-      $rep_end_month = (int)utf8_strftime('%m', $row['end_date']);
-      $rep_end_year  = (int)utf8_strftime('%Y', $row['end_date']);
-      // Get the end date in string format as well, for use when
-      // the input is disabled
-      $rep_end_date = utf8_strftime('%A %d %B %Y',$row['end_date']);
+      $rep_end_date = new DateTime();
+      $rep_end_date->setTimestamp($repeat['end_date']);
 
       switch ($rep_type)
       {
-        case REP_WEEKLY:
+        case RepeatRule::WEEKLY:
           for ($i=0; $i<DAYS_PER_WEEK; $i++)
           {
-            if ($row['rep_opt'][$i])
+            if ($repeat['rep_opt'][$i])
             {
-              $rep_day[] = $i;
+              $rep_days[] = $i;
             }
           }
           break;
-        case REP_MONTHLY:
-          if (isset($row['month_absolute']))
+        case RepeatRule::MONTHLY:
+          if (isset($repeat['month_absolute']))
           {
-            $month_type = REP_MONTH_ABSOLUTE;
-            $month_absolute = $row['month_absolute'];
+            $month_type = RepeatRule::MONTHLY_ABSOLUTE;
+            $month_absolute = $repeat['month_absolute'];
           }
-          elseif (isset($row['month_relative']))
+          elseif (isset($repeat['month_relative']))
           {
-            $month_type = REP_MONTH_RELATIVE;
-            $month_relative = $row['month_relative'];
+            $month_type = RepeatRule::MONTHLY_RELATIVE;
+            $month_relative = $repeat['month_relative'];
           }
           else
           {
@@ -1416,7 +1387,6 @@ if (isset($id))
 else
 {
   // It is a new booking. The data comes from whichever button the user clicked
-  $edit_type     = "series";
   if ($default_name_display_name)
   {
     $name = (isset($mrbs_user)) ? $mrbs_user->display_name : '';
@@ -1427,8 +1397,9 @@ else
   }
   $create_by     = $mrbs_username;
   $description   = $default_description;
-  $type          = (empty($is_mandatory_field['entry.type'])) ? $default_type : '';
   $room_id       = $room;
+  $area_id = get_area($room_id);
+  $type          = (is_mandatory_field('entry.type', $area_id)) ? '' : $default_type;
   $private       = $private_default;
   $tentative     = !$confirmed_default;
   $allow_registration           = (bool) $allow_registration_default;
@@ -1469,18 +1440,19 @@ else
   // if (a) somebody messes with the query string or (b) somebody changes morningstarts or the
   // resolution in another browser window and then this page is refreshed with the same query string).
   $start_first_slot = get_start_first_slot($month, $day, $year);
-  $start_time = max($start_first_slot, $start_time);
-  if (($start_time - $start_first_slot)%$resolution != 0)
-  {
-    $start_time = $start_first_slot + intval(($start_time - $start_first_slot)/$resolution);  // rounds down
-  }
+  $start_time = max(round_t_down($start_time, $resolution, $start_first_slot), $start_first_slot);
 
   if (isset($end_seconds))
   {
     $end_minutes = intval($end_seconds/60);
     $end_hour = intval($end_minutes/60);
     $end_minute = $end_minutes%60;
-    $end_time = mktime($end_hour, $end_minute, 0, $month, $day, $year);
+    if (!isset($end_date))
+    {
+      $end_date = $start_date;
+    }
+    list($end_year, $end_month, $end_day) = array_map('intval', explode('-', $end_date));
+    $end_time = mktime($end_hour, $end_minute, 0, $end_month, $end_day, $end_year);
     $duration = $end_time - $start_time - cross_dst($start_time, $end_time);
   }
   else
@@ -1488,11 +1460,11 @@ else
     // Set the duration
     if ($enable_periods)
     {
-      $duration = 60;  // one period
+      $duration = ($default_duration_periods ?? 1) * SECONDS_PER_MINUTE;  // One minute is one period
     }
     else
     {
-      $duration = (isset($default_duration)) ? $default_duration : SECONDS_PER_HOUR;
+      $duration = $default_duration ?? SECONDS_PER_HOUR;
     }
 
     // Make sure the duration doesn't exceed the maximum
@@ -1517,7 +1489,7 @@ else
     // allowed multi-day bookings then make sure it is on the first booking day.
     if (is_book_admin() || !$auth['only_admin_can_book_multiday'])
     {
-      $end_time = fit_to_booking_day($end_time, $back=true);
+      $end_time = fit_to_booking_day($end_time);
     }
     else
     {
@@ -1528,37 +1500,62 @@ else
   $rep_id        = 0;
   if (!isset($rep_type))  // We might have set it through a drag selection
   {
-    $rep_type      = REP_NONE;
-    $rep_end_day   = $day;
-    $rep_end_month = $month;
-    $rep_end_year  = $year;
+    $rep_type      = RepeatRule::NONE;
+    $rep_end_date = new DateTime();
+    $rep_end_date->setDate($year, $month, $day);
   }
-  $rep_day       = array(date('w', $start_time));
+  $rep_days = array(date('w', $start_time));
   $rep_interval = 1;
-  $month_type = REP_MONTH_ABSOLUTE;
+  $month_type = RepeatRule::MONTHLY_ABSOLUTE;
+
+  // Populate the default values for the custom fields
+  $columns = Columns::getInstance(_tbl('entry'));
+  foreach ($columns as $column)
+  {
+    if (!in_array($column->name, $standard_fields['entry']) && (null !== ($default = $column->getDefault())))
+    {
+      $custom_fields[$column->name] = $default;
+    }
+  }
 }
 
-if (!isset($month_relative))
+$repeat_rule = new RepeatRule();
+$repeat_rule->setType($rep_type);
+$repeat_rule->setInterval($rep_interval);
+$repeat_rule->setDays($rep_days);
+$repeat_rule->setMonthlyType($month_type ?? RepeatRule::MONTHLY_ABSOLUTE);
+$repeat_rule->setMonthlyAbsolute($month_absolute ?? (int) date('j', $start_time));
+$repeat_rule->setMonthlyRelative($month_relative ?? date_byday($start_time));
+if (isset($rep_end_date))
 {
-  $month_relative = date_byday($start_time);
+  $repeat_rule->setEndDate($rep_end_date);
 }
-if (!isset($month_absolute))
-{
-  $month_absolute = date('j', $start_time);
-}
-list($month_relative_ord, $month_relative_day) = byday_split($month_relative);
 
-$start_hour  = utf8_strftime('%H', $start_time);
-$start_min   = utf8_strftime('%M', $start_time);
-
-// Determine the area id of the room in question first
-$area_id = mrbsGetRoomArea($room_id);
+$start_hour  = date('H', $start_time);
+$start_min   = date('i', $start_time);
 
 $enable_periods ? toPeriodString($start_min, $duration, $dur_units) : toTimeString($duration, $dur_units);
 
-//now that we know all the data to fill the form with we start drawing it
+// $selected_rooms will be populated if we've come from a drag selection
+if (empty($selected_rooms))
+{
+  $selected_rooms = array($room_id);
+}
 
-if (!getWritable($create_by, $room_id))
+// Now that we know all the data to fill the form with we start drawing it
+
+// First of all, check that the user has write permission for these rooms.
+// Remove any rooms from the selection that they don't have permission for.
+foreach ($selected_rooms as $selected_room)
+{
+  if (!getWritable($create_by, $selected_room))
+  {
+    $key = array_search($selected_room, $selected_rooms);
+    unset($selected_rooms[$key]);
+  }
+}
+// If there are no rooms left then they are not allowed to write to any of them
+if (empty($selected_rooms))
 {
   showAccessDenied($view, $view_all, $year, $month, $day, $area, isset($room) ? $room : null);
   exit;
@@ -1588,6 +1585,7 @@ $res = db()->query($sql);
 
 while (false !== ($row = $res->next_row_keyed()))
 {
+  row_cast_columns($row, 'room');
   // Only use rooms which are visible and for which the user has write access
   if (getWritable($create_by, $row['id']) && is_visible($row['id']))
   {
@@ -1608,6 +1606,9 @@ $res = db()->query($sql);
 
 while (false !== ($row = $res->next_row_keyed()))
 {
+  // Cast the columns to their correct types
+  row_cast_columns($row, 'area');
+
   // We don't want areas that have no enabled rooms because it doesn't make sense
   // to try and select them for a booking.
   if (empty($rooms[$row['id']]))
@@ -1616,7 +1617,7 @@ while (false !== ($row = $res->next_row_keyed()))
   }
 
   // Periods are JSON encoded in the database
-  $row['periods'] = json_decode($row['periods']);
+  $row['periods'] = Periods::fromDbValue($row['id'], $row['periods']);
 
   // Make sure we've got the correct resolution when using periods (it's
   // probably OK anyway, but just in case)
@@ -1625,7 +1626,7 @@ while (false !== ($row = $res->next_row_keyed()))
     $row['resolution'] = 60;
   }
   // Generate some derived settings
-  $row['max_duration_qty']     = $row['max_duration_secs'];
+  $row['max_duration_qty'] = $row['max_duration_secs'];
   toTimeString($row['max_duration_qty'], $row['max_duration_units']);
   // Get the start and end of the booking day
   if ($row['enable_periods'])
@@ -1662,8 +1663,8 @@ while (false !== ($row = $res->next_row_keyed()))
 }
 
 // Check that the area for this room actually exists.  This will happen if the room id in the query
-// string is invalid, usually as a result of using an out of date bookmark.
-if (!isset($areas[$area_id]))
+// string is invalid, usually as a result of using an out-of-date bookmark.
+if (empty($area_id) || !isset($areas[$area_id]))
 {
   echo "<h1>" . get_vocab('error') . "</h1>\n";
   echo "<p>" . get_vocab('edit_entry_nonexistent_room') . "</p>\n";
@@ -1672,43 +1673,24 @@ if (!isset($areas[$area_id]))
   print_footer(true);
 }
 
-if (isset($id) && !isset($copy))
+if (!isset($id))
 {
-  if ($edit_type == "series")
-  {
-    $token = "editseries";
-  }
-  else
-  {
-    $token = "editentry";
-  }
+  $token = "addentry";
+}
+elseif ($copy)
+{
+  $token = ($edit_series) ? 'copyseries' : 'copyentry';
 }
 else
 {
-  if (isset($copy))
-  {
-    if ($edit_type == "series")
-    {
-      $token = "copyseries";
-    }
-    else
-    {
-      $token = "copyentry";
-    }
-  }
-  else
-  {
-    $token = "addentry";
-  }
+  $token = ($edit_series) ? 'editseries' : 'editentry';
 }
 
-
-$form = new Form();
+$form = new Form(Form::METHOD_POST);
 
 $form->setAttributes(array('class'  => 'standard js_hidden',
                            'id'     => 'main',
-                           'action' => multisite('edit_entry_handler.php'),
-                           'method' => 'post'));
+                           'action' => multisite('edit_entry_handler.php')));
 
 if (!empty($back_button))
 {
@@ -1716,9 +1698,23 @@ if (!empty($back_button))
   $form->setAttribute('data-back', 1);
 }
 
-$hidden_inputs = array('returl'    => $returl,
-                       'rep_id'    => $rep_id,
-                       'edit_type' => $edit_type);
+$hidden_inputs = array('returl'      => $returl,
+                       'rep_id'      => $rep_id,
+                       'edit_series' => $edit_series);
+
+// If we're going back to the index page then add any scroll positions to the
+// hidden inputs so that the JavaScript can scroll back to the same position.
+if ('index.php' == basename(parse_url($returl, PHP_URL_PATH)))
+{
+  foreach (['top', 'left'] as $var)
+  {
+    $$var = get_form_var($var, 'string');
+    if (isset($$var))
+    {
+      $hidden_inputs[$var] = $$var;
+    }
+  }
+}
 
 $form->addHiddenInputs($hidden_inputs);
 
@@ -1736,7 +1732,7 @@ if (isset($original_room_id))
                                'ical_recur_id'    => $ical_recur_id));
 }
 
-if(isset($id) && !isset($copy))
+if(isset($id) && !$copy)
 {
   $form->addHiddenInput('id', $id);
 }
@@ -1767,7 +1763,7 @@ foreach ($edit_entry_field_order as $key)
       break;
 
     case 'description':
-      $fieldset->addElement(get_field_description($description));
+      $fieldset->addElement(get_field_description($description, $area_id));
       break;
 
     case 'start_time':
@@ -1780,16 +1776,11 @@ foreach ($edit_entry_field_order as $key)
 
     case 'room_id':
       $fieldset->addElement(get_field_areas($area_id));
-      // $selected_rooms will be populated if we've come from a drag selection
-      if (empty($selected_rooms))
-      {
-        $selected_rooms = array($room_id);
-      }
       $fieldset->addElement(get_field_rooms($selected_rooms));
       break;
 
     case 'type':
-      $fieldset->addElement(get_field_type($type));
+      $fieldset->addElement(get_field_type($type, $area_id));
       break;
 
     case 'confirmation_status':
@@ -1801,7 +1792,7 @@ foreach ($edit_entry_field_order as $key)
       break;
 
     default:
-      $fieldset->addElement(get_field_custom($key));
+      $fieldset->addElement(get_field_custom($key, $area_id));
       break;
 
   } // switch
@@ -1811,13 +1802,11 @@ $form->addElement($fieldset);
 
 $form->addElement(get_fieldset_registration());
 
-// Show the repeat fields if (a) it's a new booking and repeats are allowed,
-// or else if it's an existing booking and it's a series.  (It's not particularly obvious but
-// if edit_type is "series" then it means that either you're editing an existing
-// series or else you're making a new booking.  This should be tidied up sometime!)
-if (($edit_type == "series") && $repeats_allowed)
+// Show the repeat fields if it's (a) it's an existing booking and a series or (b)
+// a new booking and repeats are allowed.
+if ((isset($id) && $edit_series) || (!isset($id) && $repeats_allowed))
 {
-  $form->addElement(get_fieldset_repeat());
+  $form->addElement(get_fieldset_repeat($repeat_rule, (new DateTime())->setTimestamp($start_time)));
 }
 
 // Checkbox for no email

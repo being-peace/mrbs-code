@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace MRBS;
 
 require "defaultincludes.inc";
@@ -52,7 +53,9 @@ $form_vars = array(
   'area_confirmed_default'        => 'string',
   'area_default_type'             => 'string',
   'area_times_along_top'          => 'string',
-  'custom_html'                   => 'string'
+  'custom_html'                   => 'string',
+  'period_starts'                 => 'array',
+  'period_ends'                   => 'array'
 );
 
 foreach($form_vars as $var => $var_type)
@@ -76,15 +79,15 @@ if (!isset($area_default_type))
 // Get the max_per_interval form variables
 foreach ($interval_types as $interval_type)
 {
-  $var = "area_max_per_${interval_type}";
+  $var = "area_max_per_$interval_type";
   $$var = get_form_var($var, 'int');
-  $var = "area_max_per_${interval_type}_enabled";
+  $var = "area_max_per_{$interval_type}_enabled";
   $$var = get_form_var($var, 'string');
-  $var = "area_max_secs_per_${interval_type}";
+  $var = "area_max_secs_per_$interval_type";
   $$var = get_form_var($var, 'int');
-  $var = "area_max_secs_per_${interval_type}_units";
+  $var = "area_max_secs_per_{$interval_type}_units";
   $$var = get_form_var($var, 'string');
-  $var = "area_max_secs_per_${interval_type}_enabled";
+  $var = "area_max_secs_per_{$interval_type}_enabled";
   $$var = get_form_var($var, 'string');
 }
 
@@ -177,8 +180,8 @@ else
 
   foreach ($interval_types as $interval_type)
   {
-    $vars[] = "area_max_per_${interval_type}_enabled";
-    $vars[] = "area_max_secs_per_${interval_type}_enabled";
+    $vars[] = "area_max_per_{$interval_type}_enabled";
+    $vars[] = "area_max_secs_per_{$interval_type}_enabled";
   }
 
   foreach ($vars as $var)
@@ -186,7 +189,33 @@ else
     $$var = (!empty($$var)) ? 1 : 0;
   }
 
+  // TODO: This is a kludge until we store use_period_times in the database.
+  // We need to make sure that the period start times correspond to the correct periods.
+  if (count($area_periods) == count($period_starts) + 1)
+  {
+    array_unshift($period_starts, null);
+  }
+  // Assemble the periods as an object.
+  $periods_tmp = new Periods($area);
+  for ($i = 0; $i < count($area_periods); $i++)
+  {
+    $periods_tmp->add(new Period(
+      $area_periods[$i],
+      $period_starts[$i] ?? null,
+      $period_ends[$i] ?? null
+    ));
+  }
 
+  // Validate the periods, but only if we are using periods with period times.
+  if ($area_enable_periods && isset($period_starts[0]) && (true !== ($result = $periods_tmp->validate())))
+  {
+    $errors[] = $result;
+  }
+
+  // Convert the periods to a value suitable for the database.
+  $area_periods = $periods_tmp->toDbValue();
+
+  // Validate times mode settings
   if (!$area_enable_periods)
   {
     // Avoid divide by zero errors
@@ -318,11 +347,11 @@ if (isset($area_max_duration_value))
 
 foreach($interval_types as $interval_type)
 {
-  $var = "max_per_${interval_type}_enabled";
+  $var = "max_per_{$interval_type}_enabled";
   $area_var = "area_" . $var;
   $assign_array[] = "$var=" . $$area_var;
 
-  $var = "max_per_${interval_type}";
+  $var = "max_per_$interval_type";
   $area_var = "area_" . $var;
   if (isset($$area_var))
   {
@@ -333,11 +362,11 @@ foreach($interval_types as $interval_type)
   }
 
   // Now do the max_secs variables (limits on the total length of bookings)
-  $var = "max_secs_per_${interval_type}_enabled";
+  $var = "max_secs_per_{$interval_type}_enabled";
   $area_var = "area_" . $var;
   $assign_array[] = "$var=" . $$area_var;
 
-  $var = "max_secs_per_${interval_type}";
+  $var = "max_secs_per_$interval_type";
   $area_var = "area_" . $var;
 
   if (isset($$area_var))
@@ -345,7 +374,7 @@ foreach($interval_types as $interval_type)
     // only update these fields if they are set;  they might be NULL because
     // they have been disabled by JavaScript
     // Need to convert back into seconds
-    $units_var = "area_max_secs_per_${interval_type}_units";
+    $units_var = "area_max_secs_per_{$interval_type}_units";
     fromTimeString($$area_var, $$units_var);
     $assign_array[] = "$var=?";
     $sql_params[] = $$area_var;
@@ -367,7 +396,7 @@ $sql_params[] = $area_reminders_enabled;
 $assign_array[] = "enable_periods=?";
 $sql_params[] = $area_enable_periods;
 $assign_array[] = "periods=?";
-$sql_params[] = json_encode($area_periods);
+$sql_params[] = $area_periods;
 $assign_array[] = "confirmation_enabled=?";
 $sql_params[] = $area_confirmation_enabled;
 $assign_array[] = "confirmed_default=?";

@@ -105,12 +105,12 @@ $vocab["month_relative"]     = "V";
 $vocab["skip_conflicts"]     = "Vynechat předchozí konflikty";
 $vocab["ctrl_click"]         = "Použijte Ctrl + kliknutí pro výběr více místností";
 $vocab["entryid"]            = "ID záznamu";
-$vocab["repeat_id"]          = "ID opakování"; 
+$vocab["repeat_id"]          = "ID opakování";
 $vocab["brief_description"]  = "Krátký popis.";
 $vocab["status"]             = "Stav";
 $vocab["public"]             = "Veřejný";
 $vocab["private"]            = "Soukromý";
-$vocab["unavailable"]        = "Soukromý";
+$vocab["unavailable"]        = "[Soukromý]";
 $vocab["is_mandatory_field"] = "je povinné pole, prosím doplňte hodnotu";
 $vocab["missing_mandatory_field"] = "Nevyplnili jste povinné pole";
 $vocab["confirmed"]          = "Potvrzeno";
@@ -191,7 +191,7 @@ $vocab["info_requested"]      = "Požadavek na uvedení více informací";
 $vocab["min_time_before"]     = "Nejmenší interval mezi aktuálním časem a začátkem rezervace je";
 $vocab["max_time_before"]     = "Největší interval mezi aktuálním časem a začátkem rezervace je";
 $vocab["latest_booking_date"]     = "Poslední datum rezervace je %s";
-$vocab["max_booking_duration"]    = "Maximální doba trvání rezervace je";
+$vocab["max_booking_duration"]    = 'Maximální doba trvání rezervace je %1$d %2$s';
 $vocab["max_per_day_global"]      = "Maximální počet rezervací na den na jednoho uživatele v celém systému je";
 $vocab["max_per_week_global"]     = "Maximální počet rezervací týdně na jednoho uživatele v celém systému je";
 $vocab["max_per_month_global"]    = "Maximální počet rezervací za měsíc na jednoho uživatele v celém systému je";
@@ -318,7 +318,7 @@ $vocab["delete_entries"]        = "Odstranění položek";
 $vocab["delete_entries_warning"] = "UPOZORNĚNÍ! Vymaže všechny položky odpovídající " .
                                    "danému hledanému řetězci. Tuto operaci nelze vrátit zpět. Opravdu " .
                                    "chcete pokračovat?\n\n" .
-                                   "Celkový počet položek, které budou smazány: ";
+                                   "Celkový počet položek, které budou smazány: %s";
 $vocab["delete_entries_failed"] = "Položky nemohou být odstraněny.";
 
 // Used in admin.php
@@ -424,8 +424,7 @@ $vocab["about_mrbs"]         = "O rezervačním systému";
 $vocab["database"]           = "Databáze";
 $vocab["system"]             = "Systém";
 $vocab["servertime"]         = "Čas serveru";
-$vocab["please_contact"]     = "Prosím kontaktujte ";
-$vocab["for_any_questions"]  = "pro všechny otázky, které zde nejsou zodpovězeny.";
+$vocab["please_contact"]     = "Prosím kontaktujte %s pro všechny otázky, které zde nejsou zodpovězeny.";
 
 // Used in import.php
 $vocab["import_icalendar"]            = "Import iCalendar souboru";
@@ -438,7 +437,7 @@ $vocab["import_intro"]                = "Tento formulář umožňuje naimportova
 $vocab["file_name"]                   = "Soubor";
 $vocab["import"]                      = "Import";
 $vocab["upload_failed"]               = "Načtení se nezdařilo";
-$vocab["max_allowed_file_size"]       = "Maximální povolená velikost souboru je";
+$vocab["max_allowed_file_size"]       = "Maximální povolená velikost souboru je %s";
 $vocab["no_file"]                     = "Žádný soubor nenačten";
 $vocab["badly_formed_ics"]            = "Špatné formátování VCALENDAR souboru";
 $vocab["area_room_order"]             = "Řazení";

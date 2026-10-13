@@ -96,12 +96,12 @@ $vocab["rep_for_nweekly"]    = "(za n-nedeljno)";
 $vocab["skip_conflicts"]     = "Preskoči konflikte koji su prošli";
 $vocab["ctrl_click"]         = "Pritisnite Ctrl da biste označili više prostorija";
 $vocab["entryid"]            = "ID Unosa";
-$vocab["repeat_id"]          = "ID Ponavljanja"; 
+$vocab["repeat_id"]          = "ID Ponavljanja";
 $vocab["brief_description"]  = "Kratak opis.";
 $vocab["status"]             = "Status";
 $vocab["public"]             = "Javno";
 $vocab["private"]            = "Privatno";
-$vocab["unavailable"]        = "Privatno";
+$vocab["unavailable"]        = "[Privatno]";
 $vocab["is_mandatory_field"] = "je obavezno polje, unesite vrednost.";
 $vocab["missing_mandatory_field"] = "Niste uneli vrednost za obavezno polje";
 $vocab["confirmed"]          = "Potvrđeno";
@@ -180,7 +180,7 @@ $vocab["info_requested"]          = "Information requested";
 $vocab["min_time_before"]         = "The minimum interval between now and the start of a booking is";
 $vocab["max_time_before"]         = "The maximum interval between now and the end of a booking is";
 $vocab["latest_booking_date"]     = "The latest booking date is %s";
-$vocab["max_booking_duration"]    = "The maximum duration of a booking is";
+$vocab["max_booking_duration"]    = 'The maximum duration of a booking is %1$d %2$s';
 $vocab["max_per_day_global"]      = "The maximum number of bookings per day per user across the whole system is";
 $vocab["max_per_week_global"]     = "The maximum number of bookings per week per user across the whole system is";
 $vocab["max_per_month_global"]    = "The maximum number of bookings per month per user across the whole system is";
@@ -305,7 +305,7 @@ $vocab["delete_entries"]        = "Delete entries";
 $vocab["delete_entries_warning"] = "WARNING!  This will delete all the entries matching " .
                                    "the search string.  The operation cannot be undone.  Are " .
                                    "you sure you want to continue?\n\n" .
-                                   "Total number of entries that will be deleted: ";
+                                   "Total number of entries that will be deleted: %s";
 $vocab["delete_entries_failed"] = "The entries could not be deleted.";
 
 // Used in admin.php
@@ -411,8 +411,7 @@ $vocab["about_mrbs"]         = "About MRBS";
 $vocab["database"]           = "Database";
 $vocab["system"]             = "System";
 $vocab["servertime"]         = "Server time";
-$vocab["please_contact"]     = "Please contact ";
-$vocab["for_any_questions"]  = "for any questions that aren't answered here.";
+$vocab["please_contact"]     = "Please contact %s for any questions that aren't answered here.";
 
 // Used in import.php
 $vocab["import_icalendar"]            = "Import an iCalendar file";
@@ -425,7 +424,7 @@ $vocab["import_intro"]                = "This form allows you to import an RFC 5
 $vocab["file_name"]                   = "File";
 $vocab["import"]                      = "Import";
 $vocab["upload_failed"]               = "Upload failed";
-$vocab["max_allowed_file_size"]       = "The maximum allowed file size is";
+$vocab["max_allowed_file_size"]       = "The maximum allowed file size is %s bytes";
 $vocab["no_file"]                     = "No file was uploaded";
 $vocab["badly_formed_ics"]            = "Badly formed VCALENDAR file";
 $vocab["area_room_order"]             = "Order";
@@ -472,7 +471,7 @@ $vocab["type.N"]            = "Neradni dani";
 $vocab["type.IV"]			= "Izborno veće";
 $vocab["type.NNV"]			= "NN veće";
 $vocab["type.SN"]			= "Studijska nedelja";
- 
+
 // General
 $vocab["fatal_db_error"]     = "Fatal error: unfortunately the database is not available at the moment.";
 $vocab["back"]               = "Back";

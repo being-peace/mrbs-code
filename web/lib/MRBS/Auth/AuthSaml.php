@@ -1,7 +1,10 @@
 <?php
 namespace MRBS\Auth;
 
-/*
+use MRBS\User;
+
+
+/**
  * Authentication management scheme that delegates everything to a ready
  * configured SimpleSamlPhp instance.  You should use this scheme, along with
  * the session scheme with the same name, if you want your users to
@@ -11,9 +14,6 @@ namespace MRBS\Auth;
  * how to configure SAML authentication.  This authentication module on its
  * own doesn't work.
  */
-
-use MRBS\User;
-
 class AuthSaml extends Auth
 {
   public function __construct()
@@ -22,18 +22,11 @@ class AuthSaml extends Auth
   }
 
 
-  /* validateUser($user, $pass)
-   *
-   * Checks if the specified username/password pair are valid
-   *
-   * $user  - The user name
-   * $pass  - The password
-   *
-   * Returns:
-   *   false    - The pair are invalid or do not exist
-   *   string   - The validated username
-   */
-  public function validateUser(?string $user, ?string $pass)
+  public function validateUser(
+    #[\SensitiveParameter]
+    ?string $user,
+    #[\SensitiveParameter]
+    ?string $pass)
   {
     $current_username = \MRBS\session()->getUsername();
 
@@ -51,6 +44,7 @@ class AuthSaml extends Auth
     $user = new User($username);
     $user->level = $this->getLevel($username);
     $user->email = $this->getEmail($username);
+    $user->display_name = $this->getUserDisplayName($username);
 
     return $user;
   }
@@ -77,6 +71,11 @@ class AuthSaml extends Auth
   {
     global $auth;
 
+    if (!isset($auth['saml']['admin']))
+    {
+      return $this->getDefaultLevel($username);
+    }
+
     $userData = \MRBS\session()->ssp->getAttributes();
     $current_username = \MRBS\session()->getUsername();
 
@@ -94,6 +93,24 @@ class AuthSaml extends Auth
             }
           }
         }
+      }
+
+      if (isset($auth['saml']['user']))
+      {
+        foreach ($auth['saml']['user'] as $attr => $values)
+        {
+          if (array_key_exists($attr, $userData))
+          {
+            foreach ($values as $value)
+            {
+              if (in_array($value, $userData[$attr]))
+              {
+                return 1;
+              }
+            }
+          }
+        }
+        return  0;
       }
 
       return 1;
@@ -116,6 +133,27 @@ class AuthSaml extends Auth
     if (isset($current_username) && $current_username === $username)
     {
       return array_key_exists($mailAttr, $userData) ? $userData[$mailAttr][0] : '';
+    }
+
+    return '';
+  }
+
+  // Gets the users displayname from the SAML attributes.
+  // Returns an empty string if no givenName and surname was found
+  private function getUserDisplayName(string $username) : string
+  {
+    global $auth;
+
+    $givenNameAttr = $auth['saml']['attr']['givenName'];
+    $surnameAttr = $auth['saml']['attr']['surname'];
+    $userData = \MRBS\session()->ssp->getAttributes();
+    $current_username = \MRBS\session()->getUsername();
+
+    if (isset($current_username) && $current_username === $username)
+    {
+      $givenName = array_key_exists($givenNameAttr, $userData) ? $userData[$givenNameAttr][0] : '';
+      $surname = array_key_exists($surnameAttr, $userData) ? $userData[$surnameAttr][0] : '';
+      return trim($givenName . ' ' . $surname);
     }
 
     return '';

@@ -23,6 +23,10 @@ $vocab["outstanding"]        = "oczekujących rezerwacji";
 $vocab["bookingsfor"]        = "Rezerwacja dla";
 $vocab["bookingsforpost"]    = ""; // To idzie po dacie
 $vocab["areas"]              = "Strefy";
+$vocab["now_day"]            = "Dzisiaj";
+$vocab["now_week"]           = "Dzisiaj";
+$vocab["now_month"]          = "Dzisiaj";
+$vocab["now_year"]           = "Dzisiaj";
 $vocab["daybefore"]          = "Idź do dnia przed";
 $vocab["dayafter"]           = "Idź do dnia po";
 $vocab["gototoday"]          = "Idź do dnia dzisiejszego";
@@ -89,7 +93,7 @@ $vocab["repeat_id"]          = "Powtórz ID ";
 $vocab["brief_description"]  = "Krótki Opis.";
 $vocab["public"]             = "Publiczny";
 $vocab["private"]            = "Prywatnt";
-$vocab["unavailable"]        = "Prywatny";
+$vocab["unavailable"]        = "[Prywatny]";
 $vocab["is_mandatory_field"] = "to pole obowiązkowe, proszę je uzupełnić..";
 $vocab["missing_mandatory_field"] = "Brak wszystkich wybaganych danych";
 $vocab["confirmed"]          = "Potwierdzony";
@@ -174,7 +178,7 @@ $vocab["min_delete_time_before"]  = 'Nie można edytować lub usunąć rezerwacj
 $vocab["max_delete_time_before"]  = 'Nie można edytować lub usunąć rezerwacji, która kończy się w czasie krótszym niż %1$d %2$s';
 $vocab["earliest_booking_date"]   = "Najwcześniejszy termin rezerwacji to %s";
 $vocab["latest_booking_date"]     = "Najpóźniejszy termin rezerwacji to %s";
-$vocab["max_booking_duration"]    = "Maksymalny czas trwania pobytu to";
+$vocab["max_booking_duration"]    = 'Maksymalny czas trwania pobytu to %1$d %2$s';
 $vocab["max_per_day_global"]      = "Maksymalna ilość rezerwacjina na dzień przez jednego użytkownika to";
 $vocab["max_per_week_global"]     = "Maksymalna ilość rezerwacjina na tydzień przez jednego użytkownika to";
 $vocab["max_per_month_global"]    = "Maksymalna ilość rezerwacjina na miesiąc przez jednego użytkownika to";
@@ -301,7 +305,7 @@ $vocab["delete_entries"]        = "Usuń wejścia";
 $vocab["delete_entries_warning"] = "UWAGA!  Spowoduje to usunięcie wszystkich dopasowanych wpisów " .
                                    "ciag wyszukiwania. Operacji nie można cofnąć. Jesteś " .
                                    "pewien że chcesz kontynuować?\n\n" .
-                                   "Całkowita usuniętych wejść: ";
+                                   "Całkowita usuniętych wejść: %s";
 $vocab["delete_entries_failed"] = "Wejścia nie mogą być usunięte.";
 
 // Uzyte w admin.php
@@ -321,7 +325,7 @@ $vocab["administration"]     = "Administracja";
 $vocab["invalid_area_name"]  = "Taki budynek juz istnieje!";
 $vocab["empty_name"]         = "Nie podałeś nazwy!";
 
-// Uzyte w edit_area.php edit_room.php 
+// Uzyte w edit_area.php edit_room.php
 $vocab["editarea"]           = "Edytuj Strefę";
 $vocab["change"]             = "Zmień";
 $vocab["editroom"]           = "Edycja Pokoju";
@@ -410,8 +414,7 @@ $vocab["about_mrbs"]         = "Informacje o MRBS";
 $vocab["database"]           = "Baza Danch";
 $vocab["system"]             = "System";
 $vocab["servertime"]         = "Czas Serwera";
-$vocab["please_contact"]     = "Prosze o kontakt ";
-$vocab["for_any_questions"]  = "W sprawie pytań na które brak tu odpowiedzi.";
+$vocab["please_contact"]     = "Prosze o kontakt %s w sprawie pytań na które brak tu odpowiedzi.";
 
 // Used in DataTables
 $vocab["show_hide_columns"]  = "Pokaż / schowaj kolumny";

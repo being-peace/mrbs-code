@@ -94,12 +94,12 @@ $vocab["rep_interval"]       = "繰り返し周期";
 $vocab["skip_conflicts"]     = "過去の競合をスキップする";
 $vocab["ctrl_click"]         = "複数の部屋を選択するときは、<br>Controlキーを押しながらクリックしてください。";
 $vocab["entryid"]            = "予約ID ";
-$vocab["repeat_id"]          = "定例予約ID "; 
+$vocab["repeat_id"]          = "定例予約ID ";
 $vocab["brief_description"]  = "簡単な説明";
 $vocab["status"]             = "状況";
 $vocab["public"]             = "公開";
 $vocab["private"]            = "非公開";
-$vocab["unavailable"]        = "非公開";
+$vocab["unavailable"]        = "[非公開]";
 $vocab["is_mandatory_field"] = "は必須のフィールドです。値を指定して下さい。";
 $vocab["missing_mandatory_field"] = "必須フィールドの値が入力されていません";
 $vocab["confirmed"]          = "確認";
@@ -151,7 +151,7 @@ $vocab["schedule"]           = "予定";
 $vocab["policy"]             = "指針";
 $vocab["too_many_entries"]   = "選択されたオプションは大量のエントリーを作成します。<br>別のオプションを使用して下さい!";
 $vocab["returncal"]          = "カレンダー表示に戻る";
-$vocab["failed_to_acquire"]  = "データベースへの排他的なアクセスの確保に失敗しました"; 
+$vocab["failed_to_acquire"]  = "データベースへの排他的なアクセスの確保に失敗しました";
 $vocab["invalid_booking"]    = "無効な予約";
 $vocab["must_set_description"] = "予約のための簡単な説明を設定する必要があります。戻って入力してください。";
 $vocab["mail_subject_approved"]  = "%s MRBSのエントリが承認されました"; // $mrbs_company
@@ -178,7 +178,7 @@ $vocab["info_requested"]          = "情報が必要です";
 $vocab["min_time_before"]         = "予約開始時刻は、現在時刻から以下の時間以上空けてください - ";
 $vocab["max_time_before"]         = "予約終了時刻は、現在時刻から以下の時間以上空けないでください - ";
 $vocab["latest_booking_date"]     = "最新の予約の日取り: %s";
-$vocab["max_booking_duration"]    = "予約の最大期間は以下のとおりです。";
+$vocab["max_booking_duration"]    = '予約の最大期間は以下のとおりです。 %1$d %2$s';
 $vocab["max_per_day_global"]      = "システム全体の、ユーザーあたりの1日の最大予約数: ";
 $vocab["max_per_week_global"]     = "システム全体の、ユーザーあたりの1週間の最大予約数: ";
 $vocab["max_per_month_global"]    = "システム全体の、ユーザーあたりの1か月の最大予約数: ";
@@ -304,7 +304,7 @@ $vocab["delete_entries"]        = "エントリーを削除する";
 $vocab["delete_entries_warning"] = "警告! この操作は、検索文字列に一致する全てのエントリーを削除します。 " .
                                    "操作を取り消すことはできません。" .
                                    "継続してもよろしいですが\n\n" .
-                                   "削除されるエントリーの合計: ";
+                                   "削除されるエントリーの合計: %s";
 $vocab["delete_entries_failed"] = "エントリーを削除することができませんでした。";
 
 // Used in admin.php
@@ -410,8 +410,7 @@ $vocab["about_mrbs"]         = "MRBSについて";
 $vocab["database"]           = "データベース";
 $vocab["system"]             = "システム";
 $vocab["servertime"]         = "サーバ時間";
-$vocab["please_contact"]     = "ここに答えがない質問は、";
-$vocab["for_any_questions"]  = "にお尋ねください。";
+$vocab["please_contact"]     = "ここに答えがない質問は、%s にお尋ねください。";
 
 // Used in import.php
 $vocab["import_icalendar"]            = "iCalendarファイルをインポートする";
@@ -424,7 +423,7 @@ $vocab["import_intro"]                = "このフォームでは、RFC 5545に�
 $vocab["file_name"]                   = "ファイル";
 $vocab["import"]                      = "インポート";
 $vocab["upload_failed"]               = "アップロードに失敗しました";
-$vocab["max_allowed_file_size"]       = "最大許容ファイルサイズ: ";
+$vocab["max_allowed_file_size"]       = "最大許容ファイルサイズ: %s";
 $vocab["no_file"]                     = "ファイルがアップロードされませんでした";
 $vocab["badly_formed_ics"]            = "フォーマットが壊れたVCALENDARファイルです";
 $vocab["area_room_order"]             = "順序";
@@ -464,7 +463,7 @@ $vocab["restore_original"]   = "元に戻す";
 // Entry types
 $vocab["type.I"]            = "内部";
 $vocab["type.E"]            = "外部";
- 
+
 // General
 $vocab["fatal_db_error"]     = "致命的なエラー: 残念ながら、データベースは現在利用可能ではありません。";
 $vocab["back"]               = "戻る";

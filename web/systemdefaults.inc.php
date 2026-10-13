@@ -1,5 +1,10 @@
 <?php
+declare(strict_types=1);
 namespace MRBS;
+
+use IntlDateFormatter;
+
+require_once 'lib/autoload.inc';
 
 /**************************************************************************
  *   MRBS system defaults file
@@ -18,9 +23,34 @@ namespace MRBS;
 // Set $debug = true to force MRBS to output debugging information to the browser.
 // Caching of files is also disabled when $debug is set.
 // WARNING!  Do not use this for production systems, as not only will it generate
-// unnecessary output in the broswer, but it could also expose sensitive security
+// unnecessary output in the browser, but it could also expose sensitive security
 // information (eg database usernames and passwords).
 $debug = false;
+
+
+/*********
+ * Logging
+ *********/
+
+$logger_settings['channel_name'] = 'MRBS';
+
+// Whether to send log messages by email
+$logger_settings['mail']['enabled'] = false;
+
+// The From address - RFC 822 format
+$logger_settings['mail']['from'] = 'logging@your.org';
+
+// The To address - can be a comma separated list (RFC 822 format)
+$logger_settings['mail']['to'] = 'logging@your.org';
+
+// The level at which to start sending emails. See lib/Psr/Log/LogLevel.php.
+$logger_settings['mail']['level'] = \Psr\Log\LogLevel::ERROR;
+
+// Whether to send stream output to the browser
+$logger_settings['stream']['browser'] = true;
+
+// Whether to send stream output to the browser console
+$logger_settings['stream']['console'] = false;
 
 
 /**********
@@ -75,16 +105,16 @@ $dbsys = "mysql";
 // tells the system to use Unix Domain Sockets, and $db_port will be ignored;
 // if you want to force TCP connection you can use "127.0.0.1".
 $db_host = "localhost";
-// If you need to use a non standard port for the database connection you
+// If you need to use a non-standard port for the database connection you
 // can uncomment the following line and specify the port number
 // $db_port = 1234;
 // Database name:
 $db_database = "mrbs";
 // Schema name.  This only applies to PostgreSQL and is only necessary if you have more
-// than one schema in your database and also you are using the same MRBS table names in
+// than one schema in your database, and you are also using the same MRBS table names in
 // multiple schemas.
 //$db_schema = "public";
-// Database login user name:
+// Database login username:
 $db_login = "mrbs";
 // Database login password:
 $db_password = 'mrbs-password';
@@ -103,6 +133,58 @@ $db_persist = false;
 $db_retries = 2;
 // The number of milliseconds to wait before retrying.  [MySQL only at the moment]
 $db_delay = 750; // milliseconds
+
+
+// MySQL driver options
+// --------------------
+
+// If you are using MySQL over SSL you may need to set some of the
+// following options. (You may need to use the 'nd_pdo_mysql' extension
+// instead of 'pdo_mysql'.)
+
+// The file path to the SSL certificate authority.
+$db_options['mysql']['ssl_ca'] = null;
+
+// The file path to the directory that contains the trusted SSL CA certificates, which are stored in PEM format.
+$db_options['mysql']['ssl_capath'] = null;
+
+// The file path to the SSL certificate.
+$db_options['mysql']['ssl_cert'] = null;
+
+// A list of one or more permissible ciphers to use for SSL encryption, in a format understood by OpenSSL.
+// For example: DHE-RSA-AES256-SHA:AES128-SHA
+$db_options['mysql']['ssl_cipher'] = null;
+
+// The file path to the SSL key.
+$db_options['mysql']['ssl_key'] = null;
+
+// Provides a way to disable verification of the server SSL certificate.
+$db_options['mysql']['ssl_verify_server_cert'] = null;  // boolean
+
+
+// PostgreSQL driver options
+// -------------------------
+
+// There are none at the moment.
+
+
+/******************
+ * System settings
+ ******************/
+
+// The $ini_directives setting can be used to set php.ini directives.  This can
+// be useful if (a) you don't have easy access to the php.ini file or (b) in
+// multisite mode when you want to have different settings for different sites.
+// Only settings that can be set in user scripts (INI_USER) may be used.  For
+// more details see https://www.php.net/manual/en/ini.list.php.
+// This should be an associative array indexed by option, for example:
+// $ini_directives = [
+//   'memory_limit' => '64M',
+//   'session.gc_probability' => 1,
+//   'session.gc_divisor' => 100,
+//   'session.gc_maxlifetime' => 90*24*60*60  // 90 days
+// ];
+$ini_directives = [];
 
 
 /*********************************
@@ -215,6 +297,14 @@ $theme = "default";
 // The "Periods" settings are used only in areas where the mode has
 // been set to "Periods".
 
+// It's possible to tell MRBS what times are associated with periods (see
+// areadefaults.inc.php for details).  When a booking spanning more than one period
+// is converted into an iCalendar the periods are normally treated as separate events
+// if there are gaps between them.  For example, if Period 1 lasts from 09:00-09:40 and
+// Period 2 lasts from 10:00-10:40, then a booking for Period 1 and 2 will be treated as
+// two separate events. But if the setting below is set to TRUE, then it will be treated
+// as one event starting at 09:00 and ending at 10:40.
+$ignore_gaps_between_periods = false;
 
 /******************
  * Booking policies
@@ -231,7 +321,7 @@ $theme = "default";
 // configure per area settings.   This would allow you to set policies such as allowing
 // a maximum of 10 bookings per month in total with a maximum of 1 per day in Area A.
 $max_per_interval_global_enabled['day']    = false;
-$max_per_interval_global['day'] = 1;      // max 1 bookings per day in total
+$max_per_interval_global['day'] = 1;      // max 1 booking per day in total
 
 $max_per_interval_global_enabled['week']   = false;
 $max_per_interval_global['week'] = 5;     // max 5 bookings per week in total
@@ -291,19 +381,39 @@ $min_booking_date = "2012-04-23";  // Must be a string in the format "yyyy-mm-dd
 // min and max delete ahead settings.
 $approved_bookings_cannot_be_changed = false;
 
-// Set this to true if you want to prevent users having a booking for two different rooms
+// Set this to true if you want to prevent users having a booking for multiple rooms
 // at the same time.
 $prevent_simultaneous_bookings = false;
 
-// Set this to true if you want to prevent bookings of a type that is invalid for a room
+// The maximum number of simultaneous bookings allowed if $prevent_simultaneous_bookings is true.
+$max_simultaneous_bookings = 1;
+
+// Whether to count simultaneous bookings just in the area concerned (true), or globally (false).
+// NOTE: it only makes sense to count globally if all the enabled areas are in "times" mode; or
+// they are in "periods" mode and the periods in each area correspond to the same time; or there
+// is only one area.
+$simultaneous_ignore_other_areas = false;
+
+// Set this to true if you want to prevent bookings of a type that is invalid for a room or day of the week
 $prevent_invalid_types = true;
+
+// Provided $prevent_invalid_types is set to true, this can be used to specify a set of days of the
+// week (0 = Sunday) that are invalid for a certain type.  For example
+// $invalid_types_days['I'] = [1, 3] means that bookings of type 'I' cannot be made on Mondays or Wednesdays.
+$invalid_types_days = array();
 
 // The start of the booking day when using periods.  Because MRBS has
 // no notion of when periods actually occur they are assumed to start
 // at the time below when we are enforcing book ahead policies.
 // The setting defines the time of day when bookings open.
-// This should be a string in the format hh:mm using the 24 hour clock.
+// This should be a string in the format hh:mm using the 24-hour clock.
 $periods_booking_opens = '00:00';
+
+// When setting book ahead policies in times mode, and the interval is a whole number of days, it is possible to
+// specify that bookings should open at a fixed time of day, rather than so many hours before the start or end of
+// the booking.
+// This should be a string in the format hh:mm using the 24-hour clock.
+//$times_booking_opens = '07:00';
 
 // When setting max_create_ahead and max_delete_ahead policies, the time interval is normally
 // measured to the end time of the booking.  This is to prevent users cheating the system by
@@ -313,6 +423,19 @@ $periods_booking_opens = '00:00';
 // to the start time, in which case this can be achieved by changing this setting to true.
 $measure_max_to_start_time = false;
 
+// By default, bookings cannot be made on days that are designated holidays (see $holidays).
+$prevent_booking_on_holidays = true;
+
+// Set this to true to prevent bookings being made on weekends (see $weekdays).
+$prevent_booking_on_weekends = false;
+
+// It is possible to exclude some booking types from certain booking policies.
+$exempt_types['max_create_ahead'] = []; // Exempt from checks on the maximum time ahead for creating bookings
+$exempt_types['max_duration_periods'] = []; // Exempt from checks on the maximum duration in periods mode
+$exempt_types['max_duration_secs'] = []; // Exempt from checks on the maximum duration in times mode
+$exempt_types['max_length'] = []; // Exempt from checks on the total length of bookings
+$exempt_types['max_number'] = []; // Exempt from checks on the total number of bookings
+
 /******************
  * Display settings
  ******************/
@@ -320,11 +443,34 @@ $measure_max_to_start_time = false;
 // [These are all variables that control the appearance of pages and could in time
 //  become per-user settings]
 
-// Start of week: 0 for Sunday, 1 for Monday, etc.
+// The maximum number of slots per day in an area for the year view to be shown.
+// Because each slot takes a minimum of 1 pixel and there are 365/366 days in a
+// year, the year view can get very wide.  It is therefore only shown if there
+// are only a few slots per day in an area.  Set this to zero to disable the year
+// view completely.
+// Note: the year view button is not displayed on narrow screens.
+$max_slots_for_year_view = 4;
+
+// Start of the week: 0 for Sunday, 1 for Monday, etc.
 $weekstarts = 0;
+
+// Start of the year: 1 for January, 2 for February, etc.
+// 0 for the current month
+$year_start = 1;
 
 // Days of the week that are weekdays
 $weekdays = array(1, 2, 3, 4, 5);
+
+// Set this to true to add styling to weekend days
+$style_weekends = false;
+
+// A two-dimensional array of holidays in yyyy-mm-dd format, indexed first by year, for example
+// $holidays[2022] = array('2022-01-01', '2022-11-24');  // New Year's Day and US Thanksgiving 2022
+// Dates can include ranges in the form 'yyyy-mm-dd..yyyy-mm-dd', eg
+// $holidays[2022] = array('2022-01-01', '2022-07-01..2022-07-31');  // New Year's Day and all of July
+// By default, bookings cannot be made on days that are designated holidays (see $prevent_booking_on_holidays).
+// Holidays are styled differently in the main calendar views.
+$holidays = array();
 
 // Days of the week that should be hidden from display
 // 0 for Sunday, 1 for Monday, etc.
@@ -335,54 +481,11 @@ $weekdays = array(1, 2, 3, 4, 5);
 // by defining some custom CSS for the .hidden_day class.
 $hidden_days = array();
 
-// Time format in pages. FALSE to show dates in 12 hour format, TRUE to show them
-// in 24 hour format
-$twentyfourhour_format = true;
-
-// Formats used for dates and times.   For formatting options
-// see http://php.net/manual/function.strftime.php.   Note that MRBS will automatically
-// convert the following formats which are not supported on Windows: %e, %l, %P and %R.
-// MRBS will use IntlDateFormatter if it exists in preference to strftime() and try and convert
-// the strftime formats into an equivalent pattern for use with IntlDateFormatter.  The following
-// strftime formats do not have an equivalent and are not supported: %u, %w, %U, %V, %W, %C,
-// %g, $G, %l and %s.
-$strftime_format['date']               = "%A %d %B %Y";  // Used in Day view
-$strftime_format['date_short']         = "%x";           // Used in Search results
-$strftime_format['dayname']            = "%A";           // Used in Month view
-$strftime_format['dayname_edit']       = "%a";           // Used in edit_entry form
-$strftime_format['weekview_date']      = "%b %e";        // Used in the table header in Week view
-$strftime_format['weekview_headers']   = "%a<br>%b %e";  // Used in the table header in Week view (all rooms)
-$strftime_format['monthview_headers']  = "%a<br>%e";     // Used in the table header in Month view (all rooms)
-$strftime_format['minical_monthname']  = "%B %Y";        // Used in mini calendar heading
-$strftime_format['minical_dayname']    = "%a";           // Used in mini calendar heading
-$strftime_format['mon']                = "%b";           // Used in date selectors
-$strftime_format['ampm']               = "%p";
-$strftime_format['time12']             = "%I:%M%p";      // 12 hour clock
-$strftime_format['time24']             = "%H:%M";        // 24 hour clock
-$strftime_format['datetime']           = "%c";           // Used in Help
-$strftime_format['datetime12']         = "%I:%M%p - %A %d %B %Y";  // 12 hour clock
-$strftime_format['datetime24']         = "%H:%M - %A %d %B %Y";    // 24 hour clock
-// If you prefer dates as "10 Jul" instead of "Jul 10" ($dateformat = true in
-// MRBS 1.4.5 and earlier) then use
-// $strftime_format['daymonth']        = "%d %b";
-$strftime_format['daymonth']           = "%b %d";
-
-// Used in the day/week/month views.  Note that for the week view we have to
-// cater for three possible cases, for example:
-//    Years differ:                   26 Dec 2016 - 1 Jan 2017
-//    Years same, but months differ:  30 Jan - 5 Feb 2017
-//    Years and months the same:      6 - 12 Feb 2017
-// Note that the separator between the start and end of the week is just '-',
-// so any spaces required need to put in the formats below.
-$strftime_format['view_day']           = "%A %e %B %Y";
-$strftime_format['view_month']         = "%B %Y";
-$strftime_format['view_week_end']      = " %e %B %Y";
-$strftime_format['view_week_start']    = "%e ";        // year and month the same
-$strftime_format['view_week_start_m']  = "%e %B ";     // just the year the same
-$strftime_format['view_week_start_y']  = "%e %B %Y ";  // years (and months) different
-
-// Whether or not to display the timezone
+// Whether to display the timezone
 $display_timezone = false;
+
+// Whether to scroll automatically so that the current time slot is in view
+$autoscroll = true;
 
 // Results per page for searching:
 $search["count"] = 20;
@@ -402,14 +505,42 @@ $ajax_refresh_rate = 10;
 // refreshed in order to keep them from getting out of date.  Set to 0 to disable.
 $prefetch_refresh_rate = 30;
 
+// Refresh rate (in seconds) when in kiosk mode
+$kiosk_refresh_rate = 300; // 5 minutes
+
+// Whether kiosk mode is enabled
+$kiosk_mode_enabled = false;
+
+// Default mode for kiosk mode.  Can be 'room' or 'area'.
+$kiosk_default_mode = 'room';
+
+// Whether to show a QR code in kiosk mode
+// Note that PHP 7.4 or greater and the mbstring extension are required for a QR code
+$kiosk_QR_code = true;
+
+// Timeout if the exit kiosk mode dialog is not acted upon
+$kiosk_exit_dialog_timeout = 10; // seconds
+
+// Timeout if there is no activity on the kiosk exit page
+$kiosk_exit_page_timeout = 10; // seconds
+
 // Entries in monthly view can be shown as start/end slot, brief description or
 // both. Set to "description" for brief description, "slot" for time slot and
 // "both" for both. Default is "both", but 6 entries per day are shown instead
 // of 12.
 $monthly_view_entries_details = "both";
 
-// To show ISO week numbers, set this to true
+// To show week numbers in the main calendar, set this to true. The week
+// numbers are only displayed if you set $weekstarts to start on the first
+// day of the week in your locale and area's timezone.  (This assumes that
+// the PHP IntlCalendar class is available; if not, the week is assumed to
+// start on Mondays, ie the ISO stanard.)
 $view_week_number = false;
+
+// To display week numbers in the mini-calendars, set this to true. The week
+// numbers are only displayed if you set $weekstarts to the start of the week.
+// See the comment about when the week starts above.
+$mincals_week_numbers = false;
 
 // Whether or not the mini-calendars are displayed.  (Note that mini-calendars are only
 // displayed anyway if the window is wide enough.)
@@ -419,11 +550,6 @@ $display_mincals = true;
 // setting the following variable to true they will be displayed above the main calendar,
 // provided the window is high enough.
 $display_mincals_above = false;
-
-// To display week numbers in the mini-calendars, set this to true. The week
-// numbers are only accurate if you set $weekstarts to 1, i.e. set the
-// start of the week to Monday
-$mincals_week_numbers = false;
 
 // To display the endtime in the slot description, eg '09:00-09:30' instead of '09:00', set
 // this to true.
@@ -438,8 +564,9 @@ $row_labels_both_sides = false;
 // well as the top in the day and week views, set to true;
 $column_labels_both_ends = false;
 
-// Show a line in the day and week views corresponding to the current time
-$show_timeline = true;
+// Show a line in the day and week views corresponding to the current time(
+$show_timeline = true;  // normal mode
+$show_timeline_kiosk = false;  // kiosk mode
 
 // For bookings that allow registration, show the number of people that have
 // registered and, if there is one, the registration limit.  This will typically
@@ -455,6 +582,10 @@ $default_view = "day";
 // The default setting for the week and month views: whether to view all the
 // rooms (true) or not (false).
 $default_view_all = true;
+
+// If there's only one room in an area, the view_all option will not normally
+// be offered.  This can be overridden by setting the variable below to true.
+$always_offer_view_all = false;
 
 // Define default room to start with (used by index.php)
 // Room numbers can be determined by looking at the Edit or Delete URL for a
@@ -505,6 +636,17 @@ $text_input_max = 70;  // characters
 // support <datalist> present the options in a scrollable select box]
 $autocomplete_length_breaks = array(25, 250, 2500);
 
+// The default orientation for Excel output
+// Options: 'portrait' or 'landscape'
+$excel_default_orientation = 'portrait';
+
+// The default paper size for Excel output
+// Options: 'A3', 'A4', 'A5', 'LEGAL', 'LETTER' or 'TABLOID'
+// You can instead, provided the size is supported in your version of Excel, use any of the integers defined in
+// https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.spreadsheet.pagesetup?view=openxml-2.8.1
+// For example 43 for Japanese double postcard (200 mm by 148 mm)
+$excel_default_paper = 'A4';
+
 // The default orientation for PDF output
 // Options: 'portrait' or 'landscape'
 $pdf_default_orientation = 'portrait';
@@ -513,12 +655,217 @@ $pdf_default_orientation = 'portrait';
 // Options: 'A3', 'A4', 'A5', 'LEGAL', 'LETTER' or 'TABLOID'
 $pdf_default_paper = 'A4';
 
+// Enable or disable state saving (eg pagination position, display length, filtering and sorting) for
+// data tables, eg the users table or report output.
+$state_save = true;
+
+// The validity duration of the saved state for data tables.
+// This option is also used to indicate to DataTables if localStorage or sessionStorage should be used
+// for storing the table's state. When set to -1 sessionStorage will be used, while for 0 or greater
+// localStorage will be used.  The difference between the two storage APIs is that sessionStorage retains
+// data only for the current session (i.e. the current browser window).  Please note that the value is
+// given in seconds. The value 0 is a special value as it indicates that the state can be stored and
+// retrieved indefinitely with no time limit.
+$state_duration = 0;
+
 // Whether to sort users by their last names or not
 $sort_users_by_last_name = false;
+
+// When viewing all rooms in the week or month views, it can be very difficult to pick out an individual
+// slot, which could be just one pixel wide.  Therefore, the user is taken to the day view first unless
+// there's only one slot per day.  If $view_all_always_go_to_day_view is set to true, then we always go to
+// the day view first, regardless of the number of slots.
+$view_all_always_go_to_day_view = false;
+
+
+/***********************
+ * Date and time formats
+ ***********************/
+
+// MRBS uses PHP's IntlDateFormatter and IntlDatePatternGenerator classes for formatting
+// dates and times in the user's locale.  On systems where the 'intl' extension is not
+// enabled, MRBS emulates those two classes and uses the strftime() function. However,
+// strftime() is deprecated from PHP 8.1 onwards, and you are recommended to ensure that
+// the 'intl' extension is enabled.
+//
+// The formats used by MRBS are specified using the $datetime_formats configuration
+// settings below. Each setting is an associative array, indexed by four possible keys:
+//
+//    'date_type'   one of the IntlDateFormatter constants (ie FULL, LONG, MEDIUM, SHORT
+//                  or NONE; default FULL).  Note that the RELATIVE_ constants are not
+//                  supported by the emulation.
+//    'time_type'   one of the IntlDateFormatter constants (ie FULL, LONG, MEDIUM, SHORT
+//                  or NONE; default FULL).
+//    'skeleton'    a "skeleton".  See
+//                  https://unicode-org.github.io/icu/userguide/format_parse/datetime/#datetimepatterngenerator.
+//                  Note that not all skeletons are emulated.
+//    'pattern'     a "pattern".  See https://unicode-org.github.io/icu/userguide/format_parse/datetime/
+//
+//    If a 'skeleton' is specified and a pattern can be generated from the skeleton, that
+//    will be used; otherwise the 'pattern' is used.  If no skeleton or pattern are specified
+//    then the appropriate date and time representations for 'date_type' and 'time_type' will
+//    be used.
+//
+//    Note that IntlDateFormatter automatically determines whether a 12 or 24-hour clock should
+//    be used based on the locale. If you need to override this and force a 12 or 24-hour clock
+//    then you will need to override the settings below in your config file with formats using
+//    patterns instead of date_type and time_type.  For example, the en-AU locale will use a 12-
+//    hour clock by default.  To force a 24-hour clock for time set
+//
+//    $datetime_formats['time'] = array(
+//      'pattern' => 'HH:mm'
+//    );
+//
+//    and similarly for the other formats involving time.  The files in intl/types are useful for
+//    seeing what the default pattern is for a locale.
+
+// The format used for dates
+$datetime_formats['date'] = array(
+  'date_type' => IntlDateFormatter::FULL,
+  'time_type' => IntlDateFormatter::NONE
+);
+
+// By default the datepickers use a date format appropriate to the locale.  If you want to
+// override this, set 'pattern' as required, eg to 'y-MM-dd' for ISO8601 format.  Note: only
+// the 'pattern' key is recognised.
+$datetime_formats['datepicker'] = array(
+  'pattern' => null
+);
+
+// The format used for dates with times
+$datetime_formats['date_and_time'] = array(
+  'date_type' => IntlDateFormatter::FULL,
+  'time_type' => IntlDateFormatter::SHORT
+);
+
+// The format used for dates with times on the Help page
+$datetime_formats['date_and_time_help'] = array(
+  'date_type' => IntlDateFormatter::FULL,
+  'time_type' => IntlDateFormatter::LONG
+);
+
+// The format used for dates with times on the Report
+$datetime_formats['date_and_time_report'] = array(
+  'date_type' => IntlDateFormatter::FULL,
+  'time_type' => IntlDateFormatter::SHORT
+);
+
+// Used in policy violation reports for holidays and weekends
+$datetime_formats['date_holiday'] = array(
+  'date_type' => IntlDateFormatter::SHORT,
+  'time_type' => IntlDateFormatter::NONE
+);
+
+// Used on the Search page
+$datetime_formats['date_search'] = array(
+  'date_type' => IntlDateFormatter::SHORT,
+  'time_type' => IntlDateFormatter::NONE
+);
+
+// The default format for day names
+$datetime_formats['day_name'] = array(
+  'pattern' => 'cccc'
+);
+
+// The format used for the weekly repeat day name on edit_entry.php
+$datetime_formats['day_name_edit'] = array(
+  'pattern' => 'ccc'
+);
+
+// The format used for the month name in the year view
+$datetime_formats['month_name_year_view'] = array(
+  'pattern' => 'LLL'
+);
+
+// The format for ranges with both dates and times
+// Note: this setting only accepts 'date_type' and 'time_type' keys
+// and ignores 'pattern' and 'skeleton' keys.
+$datetime_formats['range_datetime'] = array(
+  'date_type' => IntlDateFormatter::MEDIUM,
+  'time_type' => IntlDateFormatter::SHORT
+);
+
+// The format used for times
+$datetime_formats['time'] = array(
+  'date_type' => IntlDateFormatter::NONE,
+  'time_type' => IntlDateFormatter::SHORT
+);
+
+// The format used for timezones
+$datetime_formats['timezone'] = array(
+  'pattern' => 'z'
+);
+
+// The title of the day view calendar
+$datetime_formats['view_day'] = array(
+  'date_type' => IntlDateFormatter::FULL,
+  'time_type' => IntlDateFormatter::NONE
+);
+
+// The title of the month view calendar
+$datetime_formats['view_month'] = array(
+  'skeleton' => 'MMMMy',
+  'pattern' => 'MMMM y'
+);
+
+// The day and month as used in the header row of the week view
+$datetime_formats['view_week_day_month'] = array(
+  'skeleton' => 'dMMM',
+  'pattern' => 'MMM d'
+);
+
+// The day and month as used in the header column of the week view
+$datetime_formats['view_week_day_date_month'] = array(
+  'skeleton' => 'dEMMM',
+  'pattern' => 'EEE, MMM d'
+);
+
+// The title of the week view calendar
+// Note: this setting only accepts 'date_type' and 'time_type' keys
+// and ignores 'pattern' and 'skeleton' keys.
+$datetime_formats['view_week'] = array(
+  'date_type' => IntlDateFormatter::LONG,
+  'time_type' => IntlDateFormatter::NONE
+);
+
+// Week number
+$datetime_formats['week_number'] = array(
+  'pattern' => 'w'
+);
+
+// Sometimes if the server's ICU library is out of date and cannot easily be updated
+// it can be better to use the IntlDateFormatter emulation and strftime(), even if the
+// 'intl' extension is installed.  To do this set the variable below to true.
+$force_srtftime = false;
+
+
+/***************
+ * ICU overrides
+ * *************/
+
+// Sometimes we may want to override the standard ICU library settings,
+// for example if the ICU library on the server is out of date and can't
+// be updated.  This can be done by setting:
+//
+// $icu_override[<locale>]['first_day_of_week'] and/or
+// $icu_override[<locale>]['minimal_days_in_first_week']
+//
+// where <locale> is a valid locale in BCP 47 format and both settings take
+// integer values in the range 1..7 (IntlCalendar days start with Sunday = 1).
+
+// For example:
+//
+// $icu_override['en-AU']['first_day_of_week'] = 2; // Monday
+// $icu_override['en-AU']['minimal_days_in_first_week'] = 1;
+
 
 /************************
  * Miscellaneous settings
  ************************/
+
+// Default booking duration when using periods.  (The default duration when using
+// times is specified in areadefaults.inc.php.)
+$default_duration_periods = 1; // Number of periods
 
 // Maximum repeating entries (max needed +1):
 $max_rep_entrys = 365 + 1;
@@ -529,10 +876,27 @@ $default_report_days = 60;
 // Whether to include the name of the person who made the registration, if different, in
 // the list of registrants in reports
 $include_registered_by = true;
+// Whether to include the registrant's username as well as displayname in the list of
+// registrants in reports.
+$include_registrant_username = false;
 
 $show_plus_link = false;   // Change to true to always show the (+) link as in
                            // MRBS 1.1.
 
+// Determines whether MRBS should get all the display names at once when
+// asked to get a single display name.  MRBS converts usernames to display
+// names when displaying bookings and in reports.  This can be an expensive
+// operation when using an external authentication type, eg 'db_ext', 'ldap'
+// or 'wix', and it is usually much faster to retrieve all the names at once
+// when getting the first name, especially when producing large reports.  However
+// sometimes retrieving all the names can take a very long time, eg when
+// working with a very large LDAP directory, and it can be better just to retrieve
+// each name when needed.
+$get_display_names_all_at_once = true;
+
+// HTML tags that are allowed to be used in the message above the calendar.
+// This should be an array of tags, eg ['a', 'span'].
+$message_allowed_tags = [];
 
 // PRIVATE BOOKINGS SETTINGS
 
@@ -553,7 +917,7 @@ $is_private_field['entry.modified_by'] = true;
 
 // SETTINGS FOR APPROVING BOOKINGS - PER-AREA
 
-// These settings can all be be configured on a per-area basis, so these variables
+// These settings can all be configured on a per-area basis, so these variables
 // appear in the areadefaults.inc.php file.
 
 
@@ -567,7 +931,6 @@ $reminder_interval = 60*60*24*2;  // 2 working days
 
 // Days of the week that are working days (Sunday = 0, etc.)
 $working_days = array(1,2,3,4,5);  // Mon-Fri
-
 
 // SETTINGS FOR BOOKING CONFIRMATION
 
@@ -653,6 +1016,11 @@ $is_mandatory_field = array();
 // $is_mandatory_field['entry.type'] = true;
 // $is_mandatory_field['entry.terms_and_conditions'] = true;
 
+// For the entry table only, you can also specify that a field is mandatory only for
+// certain areas by setting the value to be an array of area IDs. For example:
+
+// $is_mandatory_field['entry.terms_and_conditions'] = [1, 3]; // Only mandatory for areas 1 and 3.
+
 $is_mandatory_field['users.display_name'] = true;
 
 // You can also enter regular expressions for validating text field input using
@@ -665,12 +1033,21 @@ $is_mandatory_field['users.display_name'] = true;
 // You would probably also want to enter a custom error message by using
 // $vocab_override, with the tag consisting of "table.field.oninvalid" eg
 
-// $vocab_override['users.zip_code.oninvalid']['en'] = "Please enter a valid ZIP code, eg '12345' or '12345-6789'";
+// $vocab_override['en']['users.zip_code.oninvalid'] = "Please enter a valid ZIP code, eg '12345' or '12345-6789'";
+
+// You can add a placeholder to text input fields in the entry form by using
+// $vocab_override, with the tag consisting of "table.field.placeholder" eg
+
+// $vocab_override['en']['entry.description.placeholder'] = "This is the placeholder text";
 
 
 // Set this to false if you do not want to have the ability to create events for which
 // other people can register.
 $enable_registration = true;
+// By default only admins are allowed to create registration bookings.  If you want
+// ordinary users to be able to do so as well then you need to set this to true.
+// However note that you will have to set $enable_registration to true as well.
+$enable_registration_users = false;
 
 // The default setting for new entries
 $allow_registration_default = false;
@@ -730,7 +1107,7 @@ $report_presentation_field_order = array();
 $auth["type"] = "db"; // How to validate the user/password. One of
                       // "auth_basic", "cas", "config", "crypt", "db", "db_ext", "idcheck",
                       // "imap", "imap_php", "joomla", "ldap", "none", "nw", "pop3",
-                      // "saml" or "wordpress".
+                      // "saml", "wix" or "wordpress".
 
 $auth["session"] = "php"; // How to get and keep the user ID. One of
                           // "cas", "cookie", "host", "http", "ip", "joomla", "nt",
@@ -751,22 +1128,24 @@ $auth["session_cookie"]["include_ip"] = true;
 // see http://php.net/manual/en/function.hash-algos.php
 $auth["session_cookie"]["hash_algorithm"] = 'sha512';
 
-$csrf_cookie["hash_algorithm"] = 'sha512';
-$csrf_cookie["secret"] = "This still isn't a very good secret!";
 
 // Configuration parameters for 'php' session scheme
 
 // The session name
+// Unset this in your config file if you want to use the default session name
 $auth["session_php"]["session_name"] = 'MRBS_SESSID';
 
-// The expiry time of a session cookie, in seconds
-// N.B. Long session expiry times rely on PHP not retiring the session
-// on the server too early. If you only want session cookies to be used,
-// set this to 0.
+// The expiry time of a session cookie, in seconds.  Set it to 0 for the
+// session to expire when the browser is closed.
+// Note:
+// (1) The expiration timestamp is set relative to the server time, which
+//     is not necessarily the same as the time in the client's browser.
+// (2) If session.gc_maxlifetime is less than the expiry time, MRBS will
+//     set it to the expiry time.
 $auth["session_php"]["session_expire_time"] = (60*60*24*30); // 30 days
 
 // Set this to the expiry time for a session after a period of inactivity
-// in seconds.   Setting to zero means that the sesion will not expire after
+// in seconds.   Setting to zero means that the session will not expire after
 // a period of activity - but note that it will expire if the session cookie
 // happens to expire (see above).  Note that if you have $refresh_rate set and
 // your system is not capable of doing Ajax refreshes but instead uses a <meta>
@@ -774,6 +1153,20 @@ $auth["session_php"]["session_expire_time"] = (60*60*24*30); // 30 days
 // be the case if you have JavaScript disabled on the client.
 $auth["session_php"]["inactivity_expire_time"] = 0; // seconds
 
+// By default, MRBS encrypts the session data with a random key which is stored in a
+// cookie.  If PHP does not have access to $_COOKIE, then set this to false and
+// MRBS will use a default key.  This is not as secure as using a random key, but
+// at least sensitive user data in the session data is not visible to the casual
+// browser of the sessions table.
+$auth["session_php"]["store_key_in_cookie"] = true;
+
+// Normally, provided the server is running PHP 7.3 or above,  the session cookies
+// are issued with SameSite attribute of "Strict", unless the session type requires
+// "Lax", eg for CAS and Saml. However, this can be inconvenient for users who might
+// access MRBS from more than one site and expect their login status to be retained.
+// By setting the variable below to true, the attribute can be relaxed to "Lax",
+// although this does trade off some security.
+$cookie_samesite_lax = false;
 
 // Cookie path override. If this value is set it will be used by the
 // 'php' and 'cookie' session schemes to override the default behaviour
@@ -791,7 +1184,7 @@ $auth["session_php"]["inactivity_expire_time"] = 0; // seconds
 // for whom admin rights are defined here.   After that this list is ignored.
 unset($auth["admin"]);              // Include this when copying to config.inc.php
 $auth["admin"][] = "127.0.0.1";     // localhost IP address. Useful with IP sessions.
-$auth["admin"][] = "administrator"; // A user name from the user list. Useful
+$auth["admin"][] = "administrator"; // A username from the user list. Useful
                                     // with most other session schemes.
 //$auth["admin"][] = "10.0.0.1";
 //$auth["admin"][] = "10.0.0.2";
@@ -850,6 +1243,9 @@ $auth['cas']['context'] = '/cas';  // Context of the CAS Server
 // tied up parsing bogus XML messages.
 //$auth['cas']['real_hosts'] = array('cas-real-1.example.com', 'cas-real-2.example.com');
 
+// Client config for the required domain name, should be protocol, hostname and port
+//$auth['cas']['client_service_name'];
+
 // For production use set the CA certificate that is the issuer of the certificate
 // on the CAS server
 $auth['cas']['ca_cert_path'] = '/path/to/cachain.pem';
@@ -861,8 +1257,8 @@ $auth['cas']['no_server_validation'] = false;
 
 // Filtering by attribute
 // The next two settings allow you to use CAS attributes to require that a user must have certain
-// attributes, otherwise their access level will be zero.  In other words unless they ahave the required
-// attributes they will be able to login successfully, but then won't have any more rights than an
+// attributes, otherwise their access level will be zero.  In other words unless they have the required
+// attributes they will be able to log in successfully, but then won't have any more rights than an
 // unlogged in user.
 // $auth['cas']['filter_attr_name'] = ''; // eg 'department'
 // $auth['cas']['filter_attr_values'] = ''; // eg 'DEPT01', or else an array, eg array('DEPT01', 'DEPT02');
@@ -878,6 +1274,11 @@ $auth['cas']['debug']   = false;  // Set to true to enable debug output. Disable
 $auth['db']['protected_fields'] = array('level', 'name', 'display_name');
 // Expiry time for a password reset key
 $auth['db']['reset_key_expiry'] = 60*60*24; // seconds
+// Set this to true if you want to prevent users that appear in some form in
+// bookings - as creators, modifiers or registrants - from being deleted.
+// This will stop their associated information such as display name and email
+// address from being lost.
+$auth['db']['prevent_deletion_of_users_in_bookings'] = false;
 
 
 // 'auth_db_ext' configuration settings
@@ -890,7 +1291,7 @@ $auth['db_ext']['db_system'] = 'mysql';
 // tells the system to use Unix Domain Sockets, and $db_port will be ignored;
 // if you want to force TCP connection you can use "127.0.0.1".
 $auth['db_ext']['db_host'] = 'localhost';
-// If you need to use a non standard port for the database connection you
+// If you need to use a non-standard port for the database connection you
 // can uncomment the following line and specify the port number
 //$auth['db_ext']['db_port'] = 1234;
 $auth['db_ext']['db_username'] = 'authuser';
@@ -903,7 +1304,8 @@ $auth['db_ext']['column_name_password'] = 'password';
 $auth['db_ext']['column_name_email'] = 'email';
 // Below is an example if you want to put the MRBS user level in the DB
 //$auth['db_ext']['column_name_level'] = 'mrbs_level';
-// Either 'password_hash' (from PHP 5.5.0), 'md5', 'sha1', 'sha256', 'crypt' or 'plaintext'
+// Can be 'password_hash', 'crypt', 'plaintext' or any algorithm supported
+// by the PHP hash() function, eg 'md5', 'sha1', 'sha256'.
 $auth['db_ext']['password_format'] = 'md5';
 
 // 'auth_ldap' configuration settings
@@ -1091,7 +1493,15 @@ $auth['saml']['ssp_path'] = '/opt/simplesamlphp';  // must be an absolute and no
 $auth['saml']['authsource'] = 'default-sp';
 $auth['saml']['attr']['username'] = 'sAMAccountName';
 $auth['saml']['attr']['mail'] = 'mail';
+$auth['saml']['attr']['givenName'] = 'givenname';
+$auth['saml']['attr']['surname'] = 'sn';
+// If you want to configure admins in the config file rather than by using SAML
+// attributes, then add the line
+// unset($auth['saml']['admin']);
+// to your config file.
 $auth['saml']['admin']['memberOf'] = ['CN=Domain Admins,CN=Users,DC=example,DC=com'];
+// Optional access control filter
+//$auth['saml']['user']['memberOf'] = ['CN=Calendar Users,CN=Users,DC=example,DC=com'];
 // MRBS session initialisation can interfere with session handling in some
 // SAML libraries.  If so, set this to true.
 $auth['saml']['disable_mrbs_session_init'] = false;
@@ -1104,6 +1514,35 @@ $auth['saml']['disable_mrbs_session_init'] = false;
 // https://simplesamlphp.org/docs/stable/simplesamlphp-install
 // https://simplesamlphp.org/docs/stable/simplesamlphp-sp
 
+
+// 'auth_wix' configuration settings
+$auth['wix']['site_url'] = "https://example.com/";  // The URL of your WIX site
+
+// The API key that you generated and saved in your Wix secrets manager.
+$auth['wix']['mrbs_api_key'] = "";
+
+// The name of the secret in your Wix secrets manager
+$auth['wix']['mrbs_api_key_secret_name'] = "MRBS_API_key";
+
+// The name (title) of the badge that determines whether a member is an
+// MRBS admin.  Note that badge names are case-sensitive.  You can also
+// configure admins in the config file by using
+// $auth['admin'][] = "someone@example.com";
+$auth['wix']['admin_badge'] = "MRBS Admin";
+
+// The name of the member property to be used for the display name.
+// Typically either 'name' or 'nickname'.
+$auth['wix']['display_name_property'] = 'name';
+
+// The number of results to be found at a time in the Wix backend when getting
+// a list of all members.  This is a configuration setting that is passed to
+// the Wix backend code as part of the request.  It is just used internally in
+// the backend and doesn't affect the size of the list returned to MRBS.
+$auth['wix']['limit'] = 500;
+
+// Setting this to true will cause debug information to be written to the PHP
+// error log.
+$auth['wix']['debug'] = false;
 
 // 'auth_wordpress' configuration settings
 $auth['wordpress']['rel_path'] = '..';   // Path to the WordPress installation relative to MRBS.
@@ -1149,6 +1588,9 @@ define('COOKIEHASH', md5($domain_name));
 // Only supported for the 'db' authentication type.
 $auth['allow_local_part_email'] = false;
 
+// Set this to true if you want users to be able to make bookings without logging in.
+$auth['allow_anonymous_booking'] = false;
+
 // If you want only administrators to be able to make and delete bookings,
 // set this variable to true
 $auth['only_admin_can_book'] = false;
@@ -1181,7 +1623,9 @@ $auth['only_admin_can_select_multiroom'] = false;
 $auth['only_admin_can_copy_others_entries'] = false;
 
 // If you don't want ordinary users to be able to see the other users'
-// details then set this to true.  (Only relevant when using 'db' authentication]
+// details then set this to true.  Used by the 'db' authentication scheme to determine
+// whether to show other users to non-admins, and also generally to determine whether
+// to create mailto: links, eg when viewing booking details.
 $auth['only_admin_can_see_other_users'] = false;
 
 // For events that allow registration, the other registrants' names are by default
@@ -1201,9 +1645,15 @@ $auth['show_registrant_names_in_public_calendar'] = false;
 // Set this to true if you want ordinary users to be able to register others.
 $auth['users_can_register_others'] = false;
 
+// Set this to true if you want ordinary users to be able to delete other users' registrations.
+$auth['users_can_delete_others_registrations'] = false;
+
 // Set this to true if you don't want admins to be able to make bookings
 // on behalf of other users
 $auth['admin_can_only_book_for_self'] = false;
+
+// Set this to true to prevent admins from skipping booking policies.
+$auth['admin_must_obey_policies'] = false;
 
 // An array of booking types for admin use only
 $auth['admin_only_types'] = array();  // eg array('E');
@@ -1254,8 +1704,13 @@ $mail_settings['from'] = 'admin_email@your.org';
 // From address above is used for all emails.
 $mail_settings['use_from_for_all_mail'] = false;
 
-// The address to be used for the ORGANIZER in an iCalendar event.   Do not make
-// this email address the same as the admin email address or the recipients
+// By default MRBS will set a Reply-To address and use current user's email address.  Set this to
+// false in order not to set a Reply-To address.
+$mail_settings['use_reply_to'] = true;
+
+// The address to be used for the ORGANIZER in an iCalendar event.  The address should
+// be an RFC822-style address of the form "display name <address>" or just "address".
+// Do not make this email address the same as the admin email address or the recipients
 // email address because on some mail systems, eg IBM Domino, the iCalendar email
 // notification is silently discarded if the organizer's email address is the same
 // as the recipient's.  On other systems you may get a "Meeting not found" message.
@@ -1335,7 +1790,12 @@ $mail_settings['icalendar'] = false; // Set to true to include iCalendar details
 // HOW TO EMAIL - LANGUAGE
 // -----------------------------------------
 
-// Set the language used for emails (choose an available lang.* file).
+// Set the language used for emails.  This should be in the form of a BCP 47
+// language tag, eg 'en-GB'.  MRBS will use the language tag to set the locale
+// for date and time formats, and find the best match in the lang.* files for
+// translations.  For example, setting the admin_lang to 'en' will give English
+// text and am/pm style times; setting it to 'en-GB' will give English text with
+// 24-hour times.
 $mail_settings['admin_lang'] = 'en';   // Default is 'en'.
 
 
@@ -1468,10 +1928,11 @@ $default_language_tokens = "en";
 // a format suitable for your OS, eg by adding '.utf-8' or changing it to 'eng'.
 $override_locale = "";
 
-// faq file language selection. IF not set, use the default english file.
-// IF your language faq file is available, set $faqfilelang to match the
-// end of the file name, including the underscore (ie. for site_faq_fr.html
-// use "_fr"
+// FAQ file language selection. If not set, use the default English file.
+// If your language faq file is available, set $faqfilelang to match the
+// end of the file name, excluding the underscore (eg for site_faq_fr.html
+// use "fr").  For compatibility with older versions of MRBS settings with
+// the underscore, eg "_fr" are supported, but deprecated.
 $faqfilelang = "";
 
 // Language selection when run from the command line
@@ -1499,8 +1960,17 @@ $language_debug = false;
  * Reports
  *************/
 
+// Default form options
+
+// Sort report by 'r' for room, 's' for start time.
+$default_sortby = 'r';
+
+// Summary: sum by 'd' for brief description, 'c' for creator, 't' for type
+$default_sumby = 'd';
+
 // Default file names
 $report_filename  = "report";
+$search_filename  = "search";
 $summary_filename = "summary";
 
 // CSV format
@@ -1519,6 +1989,24 @@ $csv_col_sep = ",";   // Separator between columns/fields
 $csv_charset = 'utf-8';
 $csv_bom = false;
 
+// UNAUTHENTICATED GET REQUESTS TO REPORT.PHP
+// These allow calendar programs to subscribe to MRBS, by using for example
+// path_to_mrbs/report.php?phase=2&output_format=2
+
+// Set this to true to allow unauthenticated GET requests to report.php
+$report_unauthenticated_get_enabled = false;
+
+// Set this to TRUE to require a key in the query string for unauthenticated
+// GET requests to report.php.  For example report.php?phase=2&output_format=2&key=secret
+$report_keys_enabled = false;
+
+// An array of valid keys
+$report_keys = [];  // An array of strings
+
+// If unauthenticated GET requests are allowed then only bookings in rooms
+// or areas that are open will be shown.
+$report_open_areas = []; // An array of integer area ids
+$report_open_rooms = []; // An array of integer room ids
 
 /*************
  * iCalendar
@@ -1534,6 +2022,12 @@ $default_import_source = 'file';
 
 // Default setting for importing past events
 $default_import_past = true;
+
+// By default iCalendar notifications will be sent with the PARTSTAT property set to
+// "NEEDS-ACTION".  If you set this variable to true then it will be set to "ACCEPTED".
+// This will change how the notification is treated by your email/calendar client.
+// See RFC 5545 for more details.
+$partstat_accepted = false;
 
 
 /*************
@@ -1576,6 +2070,21 @@ $default_name_display_name = false;
 
 // Default long description for new bookings
 $default_description = "";
+
+/***********************
+ * Ajax request settings
+ ***********************/
+
+// We send Ajax requests to ajax/del_entries.php with data as an array of ids.
+// In order to stop the POST request getting too large and triggering a 406
+// error, or else exceeding the maximum size of an SQL query, we split the request
+// into batches with the maximum number of ids in the array defined below.
+$del_entries_ajax_batch_size = 5000;
+// The maximum number of parallel requests to ajax/del_entries.php. Increasing
+// this number will increase the speed of processing, but if it's too large will
+// increase the load on the server and possibly cause errors.
+$del_entries_parallel_requests = 2;
+
 
 // Only required if your MRBS installation runs from a Git repository
 // and you want the "Help" page to show the Git commit ID you are on. Default

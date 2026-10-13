@@ -1,6 +1,12 @@
 <?php
+declare(strict_types=1);
 namespace MRBS;
 
+use InvalidArgumentException;
+use MRBS\ICalendar\Calendar;
+use MRBS\ICalendar\CalendarException;
+use MRBS\ICalendar\Event;
+use MRBS\ICalendar\Timezone;
 use PHPMailer\PHPMailer\PHPMailer;
 
 // +---------------------------------------------------------------------------+
@@ -18,16 +24,8 @@ use PHPMailer\PHPMailer\PHPMailer;
 
 define('MAIL_EOL', "\r\n");  // See RFC 5322 2.1
 
-global $mail_settings;
-
-if ($mail_settings['icalendar'])
-{
-  require_once "functions_ical.inc";
-}
-
-
 // Determines whether an email might need to be sent
-function need_to_send_mail()
+function need_to_send_mail() : bool
 {
   global $mail_settings;
 
@@ -38,26 +36,6 @@ function need_to_send_mail()
           $mail_settings['book_admin_on_approval']);
 }
 
-
-function get_mail_locale()
-{
-  static $mail_locale;
-  global $mail_settings;
-
-  if (!isset($mail_locale))
-  {
-    if (isset($mail_settings['admin_lang']))
-    {
-      $mail_locale = System::getOSlocale($mail_settings['admin_lang']);
-    }
-    else
-    {
-      $mail_locale = FALSE;
-    }
-  }
-
-  return $mail_locale;
-}
 
 // Get localized (for email) field name for a user defined table column
 // Looks for a tag of the format tablename.columnname (where tablename is
@@ -71,131 +49,42 @@ function get_mail_field_name(string $table, string $name) : string
   return get_mail_vocab(get_table_short_name($table) . ".$name");
 }
 
-// }}}
-// {{{ getMailPeriodDateString()
 
 /**
  * Format a timestamp in non-unicode output (for emails).
  *
- * @param   timestamp   $t
- * @param   int         $mod_time
- * @return  array
- */
-function getMailPeriodDateString($t, $mod_time=0)
-{
-  global $periods, $strftime_format;
-
-  $time = getdate($t);
-  $p_num = $time['minutes'] + $mod_time;
-
-  // Make sure we have a valid period [should this be necessary??]
-  if ($p_num < 0)
-  {
-    $p_num = 0;
-  }
-
-  if ($p_num > count($periods) - 1)
-  {
-    $p_num = count($periods) - 1;
-  }
-
-  $mailperiod = $periods[$p_num];
-
-  // The separator is a ',' as a '-' leads to an ambiguous display in report.php when showing end times.
-  return array($p_num, $mailperiod . utf8_strftime(", " . $strftime_format['date'], $t, get_mail_locale()));
-}
-
-// }}}
-// {{{ getMailTimeDateString()
-
-/**
- * Format a timestamp in non-unicode output (for emails).
- *
- * @param   timestamp   $t         timestamp to format
+ * @param   int         $t         timestamp to format
  * @param   boolean     $inc_time  include time in return string
- * @return  string                 formated string
+ * @return  string                 formatted string
  */
-function getMailTimeDateString($t, $inc_time=TRUE)
+function getMailTimeDateString(int $t, bool $inc_time=true) : string
 {
-  global $twentyfourhour_format, $strftime_format;
+  global $datetime_formats;
 
-  if ($inc_time)
-  {
-    if ($twentyfourhour_format)
-    {
-      return utf8_strftime($strftime_format['datetime24'], $t, get_mail_locale());
-    }
-    else
-    {
-      return utf8_strftime($strftime_format['datetime12'], $t, get_mail_locale());
-    }
-  }
-  else
-  {
-    return utf8_strftime($strftime_format['date'], $t, get_mail_locale());
-  }
+  $format = ($inc_time) ? $datetime_formats['date_and_time'] : $datetime_formats['date'];
+  return datetime_format($format, $t, Language::getInstance()->getMailLocale());
 }
 
 
-function getMailDateString($time)
+/**
+ * Get the date string for a timestamp, in the mail locale.
+ *
+ * @param bool $is_end_time Whether the timestamp is for an end time or not. This makes a difference for periods as
+ *                          the end time is then the name of the previous period.
+ */
+function getMailDateString(int $t, bool $is_end_time=false) : string
 {
-  global $enable_periods;
+  global $area, $enable_periods;
 
   if ($enable_periods)
   {
-    list($entry_period, $entry_date) = getMailPeriodDateString($time);
+    $entry_date = period_date_string($t, $area, $is_end_time, Language::getInstance()->getMailLocale());
   }
   else
   {
-    $entry_date = getMailTimeDateString($time);
+    $entry_date = getMailTimeDateString($t);
   }
   return $entry_date;
-}
-
-
-// Splits an email address of the form 'common_name <address>',
-// '"common_name" <address>' or just 'address' into a common name and an address.
-// Note that the common_name may have been MIME-encoded.
-// Returns the result as an array index by 'common_name' and 'address'.
-function parse_address($email_address)
-{
-  $result = array(
-    'address' => null,
-    'common_name' => null
-  );
-
-  $parsed_addresses = PHPMailer::parseAddresses($email_address);
-
-  if (!empty($parsed_addresses))
-  {
-    $parsed_address = $parsed_addresses[0];
-    if (isset($parsed_address['address']))
-    {
-      $result['address'] = $parsed_address['address'];
-    }
-
-    if (isset($parsed_address['name']))
-    {
-      if (function_exists('mb_decode_mimeheader'))
-      {
-        $result['common_name'] = mb_decode_mimeheader($parsed_address['name']);
-      }
-      elseif (function_exists('iconv_mime_decode'))
-      {
-        $result['common_name'] = iconv_mime_decode($parsed_address['name'], 0, get_charset());
-      }
-      // imap_utf8() produces utf-8 output, so we'll only use it if our charset is utf-8.  For
-      // other charsets we could in theory convert the output into our desired charset using iconv,
-      // but if we are able to do that then we wouldn't be here anyway because iconv_mime_decode()
-      // above would have worked.
-      elseif (function_exists('imap_utf8') && ('utf-8' == strtolower(get_charset())))
-      {
-        $result['common_name'] = imap_utf8($parsed_address['name']);
-      }
-    }
-  }
-
-  return $result;
 }
 
 
@@ -203,36 +92,38 @@ function parse_address($email_address)
 //
 // Takes an array of email addresses and returns a comma separated
 // list of addresses with duplicates removed.
-function get_address_list($array)
+function get_address_list(array $address_strings) : string
 {
-  // Turn the array into a comma separated string
-  $string = implode(',', $array);
-  // Now turn it back into an array.   This is necessary because
-  // some of the elements of the original array may themselves have
-  // been comma separated strings
-  $array = explode(',', $string);
-  // remove any leading and trailing whitespace and any empty strings
+  // Remove any leading and trailing whitespace and any empty strings
   $trimmed_array = array();
-  for ($i=0; $i < count($array); $i++)
+  foreach ($address_strings as $address_string)
   {
-    $array[$i] = trim($array[$i]);
-    if ($array[$i] !== '')
+    $address_string = trim($address_string);
+    if ($address_string !== '')
     {
-      // Use parseAddresses() to validate the address because it could contain a display name
-      if (count(PHPMailer::parseAddresses($array[$i])) == 0)
+      // Use parse_addresses to validate the address because it could contain a display name
+      if (count(parse_addresses($address_string)) == 0)
       {
-        $message = 'Invalid email address "' . $array[$i] . '"';
+        $message = 'Invalid email address "' . $address_string . '"';
         mail_debug($message);
         trigger_error($message, E_USER_NOTICE);
       }
-      $trimmed_array[] = $array[$i];
+      $trimmed_array[] = $address_string;
     }
   }
   // remove duplicates
   $trimmed_array = array_unique($trimmed_array);
   // re-assemble the string
-  $string = implode(',', $trimmed_array);
-  return $string;
+  return implode(',', $trimmed_array);
+}
+
+
+// Get the admin email address(es), provided that the config settings allow it.
+function get_admin_email() : string
+{
+  global $mail_settings;
+
+  return ($mail_settings['admin_on_bookings'] && isset($mail_settings['recipients'])) ? $mail_settings['recipients'] : '';
 }
 
 
@@ -240,78 +131,93 @@ function get_address_list($array)
 // for the room with id $room_id
 // (At the moment this is just the admin email address, but this could
 // be extended.)
-function get_approvers_email($room_id)
+function get_approvers_email($room_id) : string
 {
-  global $mail_settings;
-
-  return $mail_settings['recipients'];
+  return get_admin_email();
 }
 
 
-// Get the area_admin_email for an entry $id
-// If $series is set this is an entry in the repeat table, otherwise the entry table
-// Returns an empty string in the case of an error
-function get_area_admin_email($id, $series=FALSE)
+/**
+ * Get the area admin email address(es) for the booking.
+ *
+ * @param array $data The data for the booking (could be an individual entry or a series)
+ *
+ * @return string The area admin email address for the booking, or an empty string if there is none.
+ */
+function get_area_admin_email(array $data) : string
 {
-  $id_table = ($series) ? "rep" : "e";
-
-  $sql = "SELECT a.area_admin_email ";
-  $sql .= "FROM " . _tbl('room') . " r, " . _tbl('area') . " a, " . _tbl('entry') . " e ";
-  // If this is a repeating entry...
-  if ($id_table == 'rep')
+  // Sometimes the data will already contain the area admin email address.
+  if (isset($data['area_admin_email']) && ($data['area_admin_email'] !== ''))
   {
-    // ...use the repeat table
-    $sql .= ", " . _tbl('repeat') . " rep ";
+    return $data['area_admin_email'];
   }
-  $sql .= "WHERE ${id_table}.id=?
-             AND r.id=${id_table}.room_id
-             AND a.id=r.area_id
-           LIMIT 1";
-  $email = db()->query1($sql, array($id));
 
-  return ($email == -1) ? '' : $email;
+  // Otherwise, get it from the database.
+  $id_table = ($data['repeat_rule']->getType() === RepeatRule::NONE) ? 'E' : 'T';
+
+  $sql = "SELECT A.area_admin_email
+            FROM " . _tbl('room') . " M, " . _tbl('area') . " A, ";
+
+  $sql .= ($id_table == 'E') ? _tbl('entry') . " E " : _tbl('repeat') . " T ";
+  $sql .= "WHERE {$id_table}.id=:id
+             AND M.id={$id_table}.room_id
+             AND A.id=M.area_id
+           LIMIT 1";
+  $email = db()->query_scalar_non_bool($sql, [':id' => $data['id']]);
+
+  return (!isset($email) || ($email === false)) ? '' : $email;
 }
 
 
-// Get the room_admin_email for an entry $id
-// If $series is set this is an entry in the repeat table, otherwise the entry table
-// Returns an empty string in the case of an error
-function get_room_admin_email($id, $series=FALSE)
+/**
+ * Get the room admin email address(es) for the booking.
+ *
+ * @param array $data The data for the booking (could be an individual entry or a series)
+ *
+ * @return string The area admin email address for the booking, or an empty string if there is none.
+ */
+function get_room_admin_email(array $data) : string
 {
-  $id_table = ($series) ? "rep" : "e";
-
-  $sql = "SELECT r.room_admin_email ";
-  $sql .= "FROM " . _tbl('room') . " r, " . _tbl('entry') . " e ";
-  // If this is a repeating entry...
-  if ($id_table == 'rep')
+  // Sometimes the data will already contain the room admin email address.
+  if (isset($data['room_admin_email']) && ($data['room_admin_email'] !== ''))
   {
-    // ...use the repeat table
-    $sql .= ", " . _tbl('repeat') . " rep ";
+    return $data['room_admin_email'];
   }
-  $sql .= "WHERE ${id_table}.id=?
-             AND r.id=${id_table}.room_id
-           LIMIT 1";
-  $email = db()->query1($sql, array($id));
 
-  return ($email == -1) ? '' : $email;
+  // Otherwise, get it from the database.
+  $id_table = ($data['repeat_rule']->getType() === RepeatRule::NONE) ? "E" : "T";
+
+  $sql = "SELECT M.room_admin_email
+            FROM " . _tbl('room') . " M, ";
+  $sql .= ($id_table == 'E') ? _tbl('entry') . " E " : _tbl('repeat') . " T ";
+  $sql .= "WHERE {$id_table}.id=:id
+             AND M.id={$id_table}.room_id
+           LIMIT 1";
+  $email = db()->query_scalar_non_bool($sql, [':id' => $data['id']]);
+
+  return (!isset($email) || ($email === false)) ? '' : $email;
 }
 
 
 // Create a row of a table in either plain text or HTML format.
 // Plain text:  returns "$label: $new" . MAIL_EOL
 // HTML:        returns "<tr><td>$label: </td><td>$new</td></tr>" . MAIL_EOL
+// $new and $old can be of type null|int|float|string (union declarations are not supported until PHP 8.0).
 // If $compare is TRUE then a third column is output with $old in parentheses
-function create_body_table_row($label, $new, $old='', $compare=FALSE, $as_html=FALSE)
+function create_body_table_row(string $label, $new, $old, bool $compare=false, bool $as_html=false) : string
 {
+  $new = $new ?? '';
+  $old = $old ?? '';
+
   $result  = ($as_html) ? '<tr>' . MAIL_EOL : '';
 
   // The label
   $result .= ($as_html) ? '<td>' : '';
-  $result .= ($as_html) ? htmlspecialchars("$label: ") : "$label: ";
+  $result .= ($as_html) ? escape_html("$label: ") : "$label: ";
   $result .= ($as_html) ? '</td>' . MAIL_EOL : '';
   // The new value
   $result .= ($as_html) ? '<td>' : '';
-  $result .= ($as_html) ? htmlspecialchars($new) : "$new";
+  $result .= ($as_html) ? escape_html($new) : "$new";
   $result .= ($as_html) ? '</td>' . MAIL_EOL : '';
   // The old value (if we're doing a comparison)
   if ($compare)
@@ -326,7 +232,7 @@ function create_body_table_row($label, $new, $old='', $compare=FALSE, $as_html=F
       // Put parentheses around the HTML version as well as the plain text
       // version in case the table is not rendered properly in HTML.  The
       // parentheses will make the old value stand out.
-      $result .= ($as_html) ? htmlspecialchars(" ($old)") : " ($old)";
+      $result .= ($as_html) ? escape_html(" ($old)") : " ($old)";
     }
     $result .= ($as_html) ? '</td>' . MAIL_EOL : '';
   }
@@ -341,14 +247,14 @@ function create_body_table_row($label, $new, $old='', $compare=FALSE, $as_html=F
 //
 //   $dates      an array of start times
 //   $as_html    (boolean) whether the list should be HTML or plain text
-function create_date_list($dates, $as_html)
+function create_date_list(array $dates, bool $as_html) : string
 {
   $result = ($as_html) ? '<ul>' . MAIL_EOL : '';
   foreach ($dates as $date)
   {
     $result .= ($as_html) ? '<li>' : '';
     $date_string = getMailDateString($date);
-    $result .= ($as_html) ? htmlspecialchars($date_string) : $date_string;
+    $result .= ($as_html) ? escape_html($date_string) : $date_string;
     $result .= ($as_html) ? '</li>' : '';
     // The newline is important to stop the line length exceeding 998 characters,
     // which will happen if there are a lot of dates.  See RFC 5322 2.1.1.
@@ -362,9 +268,9 @@ function create_date_list($dates, $as_html)
 // Generate a list of repeat dates for a series
 //
 // $reps is an array of start_times that have been created/modified/deleted.
-function create_repeat_list($data, $action, $as_html, $reps)
+function create_repeat_list(array $data, $action, bool $as_html, array $reps) : string
 {
-  if (($data['rep_type'] == REP_NONE) ||
+  if (($data['repeat_rule']->getType() == RepeatRule::NONE) ||
        in_array($action, array('more_info', 'remind')))
   {
     return '';
@@ -381,15 +287,6 @@ function create_repeat_list($data, $action, $as_html, $reps)
     $result .= get_vocab("mail_body_repeats_booked");
   }
   $result .= ($as_html) ? '</p>' . MAIL_EOL : MAIL_EOL . MAIL_EOL;
-
-  $rep_details = array();
-  foreach (array('rep_type', 'rep_opt', 'rep_interval', 'month_absolute', 'month_relative') as $key)
-  {
-    if (isset($data[$key]))
-    {
-      $rep_details[$key] = $data[$key];
-    }
-  }
 
   $result .= create_date_list($reps, $as_html);
 
@@ -410,12 +307,14 @@ function create_repeat_list($data, $action, $as_html, $reps)
 
 // $start_times is an array of start_times that have been created/modified/deleted.
 // If not specified the function works them out for itself from the repeat data
-function create_body($data, $mail_previous, $compare, $series, $action, $start_times, $as_html=false, $note='')
+function create_body(array $data, ?array $mail_previous, bool $series, string $action, array $start_times, bool $as_html=false, ?string $note=null) : string
 {
   global $mrbs_company;
   global $enable_periods, $approval_enabled, $confirmation_enabled;
   global $mail_settings, $standard_fields;
   global $select_options, $booking_types;
+
+  $compare = !empty($mail_previous);
 
   // If we haven't got a previous entry just give it one.   It won't get used,
   // but will prevent a series if undefined index notices.
@@ -430,10 +329,10 @@ function create_body($data, $mail_previous, $compare, $series, $action, $start_t
   if ($as_html)
   {
     $body .= DOCTYPE . MAIL_EOL;
-    $body .= '<html lang="' . convert_to_BCP47($mail_settings['admin_lang']) . '">' . MAIL_EOL;
+    $body .= '<html lang="' . Language::getInstance()->getMailLang() . '">' . MAIL_EOL;
     $body .= '<head>' . MAIL_EOL;
-    $body .= '<meta http-equiv="Content-Type" content="text/html; charset=' . get_mail_charset() . '">' . MAIL_EOL;
-    $body .= '<title>' . htmlspecialchars($mrbs_company) . '</title>' . MAIL_EOL;
+    $body .= '<meta http-equiv="Content-Type" content="text/html; charset=' . Language::MAIL_CHARSET . '">' . MAIL_EOL;
+    $body .= '<title>' . escape_html($mrbs_company) . '</title>' . MAIL_EOL;
     $body .= '<style type="text/css">' . MAIL_EOL;
     $css_file = 'css/mrbs-mail.css.php';
     if (is_file($css_file) && is_readable($css_file))
@@ -454,7 +353,7 @@ function create_body($data, $mail_previous, $compare, $series, $action, $start_t
     $body .= '</style>' . MAIL_EOL;
     $body .= '</head>' . MAIL_EOL;
     $body .= '<body id="mrbs">' . MAIL_EOL;
-    $body .= '<div id="header">' . htmlspecialchars($mrbs_company . ' - ' . get_mail_vocab('mrbs')) . '</div>' . MAIL_EOL;
+    $body .= '<div id="header">' . escape_html($mrbs_company . ' - ' . get_mail_vocab('mrbs')) . '</div>' . MAIL_EOL;
     $body .= '<div id="contents">' . MAIL_EOL;
   }
 
@@ -463,7 +362,7 @@ function create_body($data, $mail_previous, $compare, $series, $action, $start_t
   $mrbs_user = session()->getCurrentUser();
   if (isset($mrbs_user))
   {
-    $user_escaped = ($as_html) ? htmlspecialchars($mrbs_user->display_name) : $mrbs_user->display_name;
+    $user_escaped = ($as_html) ? escape_html($mrbs_user->display_name) : $mrbs_user->display_name;
   }
   else
   {
@@ -479,7 +378,7 @@ function create_body($data, $mail_previous, $compare, $series, $action, $start_t
       $body .= get_mail_vocab("mail_body_more_info", $user_escaped);
       $body .= ($as_html) ? '</p><p>' : MAIL_EOL . MAIL_EOL;
       $body .= get_mail_vocab("info_requested") . ": ";
-      $body .= $note;
+      $body .= $note ?? '';
       break;
     case "remind":
       $body .= get_mail_vocab("mail_body_reminder");
@@ -488,7 +387,7 @@ function create_body($data, $mail_previous, $compare, $series, $action, $start_t
       $body .= get_mail_vocab("mail_body_rej_entry", $user_escaped);
       $body .= ($as_html) ? '</p><p>' : MAIL_EOL . MAIL_EOL;
       $body .= get_mail_vocab("reason") . ': ';
-      $body .= $note;
+      $body .= $note ?? '';
       break;
     case "delete":
       $body .= get_mail_vocab("mail_body_del_entry", $user_escaped);
@@ -517,7 +416,7 @@ function create_body($data, $mail_previous, $compare, $series, $action, $start_t
     {
       $body .= '&series=1';
     }
-    $body .= ($as_html) ? '">' . htmlspecialchars($data['name']) . '</a>' : '';
+    $body .= ($as_html) ? '">' . escape_html($data['name']) . '</a>' : '';
   }
   $body .= ($as_html) ? '</p>' . MAIL_EOL : MAIL_EOL . MAIL_EOL;
 
@@ -600,17 +499,9 @@ function create_body($data, $mail_previous, $compare, $series, $action, $start_t
     // End time
     $this_endtime = $data['end_time'];
     $previous_endtime = ($compare) ? $mail_previous['end_time'] : 0;
-    if ($enable_periods)
-    {
-      // If we are using periods then the end_time is the end of the last
-      // period.   We therefore need to subtract 60 seconds from it so that
-      // we get the name of that period, rather than the name of the next one.
-      $this_endtime = $this_endtime - 60;
-      $previous_endtime = $previous_endtime - 60;
-    }
     $body .= create_body_table_row (get_mail_vocab("end_date"),
-                                    getMailDateString($this_endtime),
-                                    getMailDateString($previous_endtime),
+                                    getMailDateString($this_endtime, true),
+                                    getMailDateString($previous_endtime, true),
                                     $compare, $as_html);
 
     // Type of booking
@@ -624,18 +515,18 @@ function create_body($data, $mail_previous, $compare, $series, $action, $start_t
 
     // Created by
     $body .= create_body_table_row (get_mail_vocab("createdby"),
-                                    get_display_name($data['create_by']),
-                                    get_display_name($mail_previous['create_by']),
+                                    auth()->getDisplayName($data['create_by']),
+                                    auth()->getDisplayName($mail_previous['create_by']),
                                     $compare, $as_html);
 
     // Custom fields
-    $columns = new Columns(_tbl('entry'));
+    $columns = Columns::getInstance(_tbl('entry'));
     foreach ($columns as $column)
     {
       if (!in_array($column->name, $standard_fields['entry']))
       {
         $key = $column->name;
-        $value = (isset($data[$key])) ? $data[$key] : '';
+        $value = $data[$key];
         // Convert any booleans or pseudo-booleans to text strings (in the mail language)
         if ($column->isBooleanLike())
         {
@@ -647,11 +538,14 @@ function create_body($data, $mail_previous, $compare, $series, $action, $start_t
         }
         // For any associative arrays we want the value rather than the key
         if (isset($select_options["entry.$key"]) &&
-            is_assoc($select_options["entry.$key"]) &&
-            array_key_exists($value, $select_options["entry.$key"]))
+            is_assoc($select_options["entry.$key"]))
         {
-          $value = $select_options["entry.$key"][$value];
+          if (isset($value) && array_key_exists($value, $select_options["entry.$key"]))
+          {
+            $value = $select_options["entry.$key"][$value];
+          }
           if ($compare &&
+              isset($mail_previous[$key]) &&
               array_key_exists($mail_previous[$key], $select_options["entry.$key"]))
           {
             $mail_previous[$key] = $select_options["entry.$key"][$mail_previous[$key]];
@@ -672,77 +566,43 @@ function create_body($data, $mail_previous, $compare, $series, $action, $start_t
 
     // Repeat Type
     $body .= create_body_table_row (get_mail_vocab("rep_type"),
-                                    get_mail_vocab("rep_type_" . $data['rep_type']),
-                                    get_mail_vocab("rep_type_" . $mail_previous['rep_type']),
+                                    get_mail_vocab("rep_type_" . $data['repeat_rule']->getType()),
+                                    get_mail_vocab("rep_type_" . $mail_previous['repeat_rule']->getType()),
                                     $compare, $as_html);
 
     // Details if a series
-    if ($data['rep_type'] != REP_NONE)
+    if ($data['repeat_rule']->getType() != RepeatRule::NONE)
     {
 
-      if ($data['rep_type'] == REP_WEEKLY)
+      if ($data['repeat_rule']->getType() == RepeatRule::WEEKLY)
       {
         // Repeat days
         // Display day names according to language and preferred weekday start.
-        $opt = get_rep_day_list($data['rep_opt']);
-        $opt_previous = ($compare) ? get_rep_day_list($mail_previous['rep_opt']) : "";
+        $opt = $data['repeat_rule']->getDaysAsNames(true);
+        $opt_previous = ($compare) ? $mail_previous['repeat_rule']->getDaysAsNames(true) : '';
         $body .= create_body_table_row (get_mail_vocab("rep_rep_day"),
                                         $opt,
                                         $opt_previous,
                                         $compare, $as_html);
       }
 
-      if ($data['rep_type'] == REP_MONTHLY)
+      if ($data['repeat_rule']->getType() == RepeatRule::MONTHLY)
       {
-
-        if (isset($data['month_absolute']))
-        {
-          $new = $data['month_absolute'];
-        }
-        elseif (isset($data['month_relative']))
-        {
-          // Note: this does not internationalise very well and could do with revisiting.
-          // It follows the select box order in edit_entry, which is the more difficult one
-          // to sort out.  It assumes all languages have the same order as English
-          // eg "the second Wednesday" which is probably not true.
-          list($ord, $dow) = byday_split($data['month_relative']);
-          $new = get_vocab("ord_" . $ord) . " " . day_name(RFC_5545_day_to_ord($dow));
-        }
-        else
-        {
-          trigger_error("Unknown monthly repeat type, E_USER_NOTICE");
-        }
-        if (isset($mail_previous['month_absolute']))
-        {
-          $old = $mail_previous['month_absolute'];
-        }
-        elseif (isset($mail_previous['month_relative']))
-        {
-          // Note: this does not internationalise very well and could do with revisiting.
-          // It follows the select box order in edit_entry, which is the more difficult one
-          // to sort out.  It assumes all languages have the same order as English
-          // eg "the second Wednesday" which is probably not true.
-          list($ord, $dow) = byday_split($mail_previous['month_relative']);
-          $old = get_vocab("ord_" . $ord) . " " . day_name(RFC_5545_day_to_ord($dow));
-        }
-        else
-        {
-          trigger_error("Unknown monthly repeat type, E_USER_NOTICE");
-        }
+        $previous_repeat_day = ($mail_previous['repeat_rule']->getType() == RepeatRule::MONTHLY) ? get_monthly_repeat_day($mail_previous) : '';
         $body .= create_body_table_row (get_mail_vocab("repeat_on"),
-                                        $new,
-                                        $old,
+                                        get_monthly_repeat_day($data),
+                                        $previous_repeat_day,
                                         $compare, $as_html);
       }
 
       // Repeat interval
-      $new = $data['rep_interval'] . ' ' .
-             get_rep_interval_units_mail($data['rep_type'], $data['rep_interval']);
+      $repeat_interval = $data['repeat_rule']->getInterval();
+      $new = $repeat_interval . ' ' . $data['repeat_rule']->getIntervalUnits(true);
 
-      if (isset($mail_previous['rep_interval']))
+      $previous_repeat_interval = $mail_previous['repeat_rule']->getInterval();
+      if (isset($previous_repeat_interval))
       {
-        $old = $mail_previous['rep_interval'] . ' ' .
-               get_rep_interval_units_mail($mail_previous['rep_type'], $mail_previous['rep_interval']);
+        $old = $previous_repeat_interval . ' ' . $mail_previous['repeat_rule']->getIntervalUnits(true);
       }
       else
       {
@@ -755,9 +615,9 @@ function create_body($data, $mail_previous, $compare, $series, $action, $start_t
                                       $compare, $as_html);
 
       // Repeat end date
-      $end_previous = ($mail_previous['rep_type'] == REP_NONE) ? '' : getMailTimeDateString($mail_previous['end_date'], FALSE);
+      $end_previous = ($mail_previous['repeat_rule']->getType() == RepeatRule::NONE) ? '' : getMailTimeDateString($mail_previous['repeat_rule']->getEndDate()->getTimestamp(), false);
       $body .= create_body_table_row (get_mail_vocab("rep_end_date"),
-                                      getMailTimeDateString($data['end_date'], FALSE),
+                                      getMailTimeDateString($data['repeat_rule']->getEndDate()->getTimestamp(), false),
                                       $end_previous,
                                       $compare, $as_html);
 
@@ -774,7 +634,7 @@ function create_body($data, $mail_previous, $compare, $series, $action, $start_t
   // above, it's often helpful to have this expanded out into a list of actual dates to
   // avoid any confusion.    The repeat list also gives a list of dates that could not
   // be booked due to conflicts.
-  if ($data['rep_type'] != REP_NONE)
+  if ($data['repeat_rule']->getType() != RepeatRule::NONE)
   {
     $body .= create_repeat_list($data, $action, $as_html, $start_times);
   }
@@ -789,40 +649,72 @@ function create_body($data, $mail_previous, $compare, $series, $action, $start_t
   return $body;
 }
 
+
+// Merges a comma separated string of addresses (could be a single address) into
+// an array of addresses
+// TODO: simplify all address handling
+function address_merge(array $addresses, string $address_string) : array
+{
+  $result = $addresses;
+
+  $new_addresses = parse_addresses($address_string);
+  $mailer = new PHPMailer();
+  $mailer->CharSet = Language::MAIL_CHARSET;
+
+  foreach ($new_addresses as $new_address)
+  {
+    $result[] = $mailer->addrFormat(array($new_address['address'], $new_address['name']));
+  }
+
+  return $result;
+}
+
+
 // create_addresses($data, $action)
 //
-// Returns an array indexed by 'from', 'to' and 'cc' with each element
-// consisting of a comma separated list of email addresses, or else
-// FALSE if there are no 'to' or 'cc' addresses
+// Returns an array indexed by 'from', 'reply_to', 'to' and 'cc' with each element
+// consisting of a comma separated list of email addresses.
 //
 // Parameters:
 //   $data     an array containing all the data concerning this booking
 //   $action   the action that has caused this email to be sent
 //
-function create_addresses($data, $action)
+function create_addresses(array $data, array $previous, string $action) : array
 {
   global $approval_enabled, $mail_settings;
 
+  $reply_to = array();
   $to = array();
   $cc = array();
 
-  $cc[] = $mail_settings['cc'];
-
-  // Set the From address.  If this is a reminder email or a request for more info
-  // then set the From address to be the user's - unless we've configured MRBS not
-  // to do this (to avoid the email being rejected as spam), in which case we'll
-  // put the user's address on the Cc line, which will enable the recipient to
-  // use it in a reply.
-  $mrbs_user = session()->getCurrentUser();
-  if (isset($mrbs_user) && in_array($action, array('more_info', 'remind')))
+  if (!empty($mail_settings['cc']))
   {
-    if ($mail_settings['use_from_for_all_mail'])
+    $cc = address_merge($cc, $mail_settings['cc']);
+  }
+
+  $mrbs_user = session()->getCurrentUser();
+  if (isset($mrbs_user))
+  {
+    // Set the Reply-To address
+    if ($mail_settings['use_reply_to'] && !empty($mrbs_user->email))
     {
-      $cc[] = $mrbs_user->mailbox();
+      $reply_to[] = $mrbs_user->mailbox();
     }
-    else
+    // Set the From address.  If this is a reminder email or a request for more info,
+    // then set the From address to be the user's - unless we've configured MRBS not
+    // to do this (to avoid the email being rejected as spam), in which case we'll
+    // put the user's address on the Cc line, which will enable the recipient to
+    // use it in a reply.
+    if (in_array($action, array('more_info', 'remind')))
     {
-      $from = $mrbs_user->mailbox();
+      if ($mail_settings['use_from_for_all_mail'])
+      {
+        $cc[] = $mrbs_user->mailbox();
+      }
+      else
+      {
+        $from = $mrbs_user->mailbox();
+      }
     }
   }
 
@@ -837,45 +729,30 @@ function create_addresses($data, $action)
       $approval_enabled &&
       !is_book_admin($data['room_id']))
   {
-    $to[] = get_approvers_email($data['room_id']);
+    $email = get_approvers_email($data['room_id']);
+    if (!empty($email))
+    {
+      $to = address_merge($to, $email);
+    }
   }
 
-  if ($mail_settings['admin_on_bookings'])
-  {
-    $to[] = $mail_settings['recipients'];
-  }
+  $to = address_merge($to, get_admin_email());
 
   if ($mail_settings['area_admin_on_bookings'])
   {
-    // Look for list of area admins email addresses
-    if (empty($data['area_admin_email']))
+    $to = address_merge($to, get_area_admin_email($data));
+    if (!empty($previous))
     {
-      $email = get_area_admin_email($data['id'], ($data['rep_type'] != REP_NONE));
-      if (!empty($email))
-      {
-        $to[] = $email;
-      }
-    }
-    else
-    {
-      $to[] = $data['area_admin_email'];
+      $to = address_merge($to, get_area_admin_email($previous));
     }
   }
 
   if ($mail_settings['room_admin_on_bookings'])
   {
-    // Look for list of room admins email addresses
-    if (empty($data['room_admin_email']))
+    $to = address_merge($to, get_room_admin_email($data));
+    if (!empty($previous))
     {
-      $email = get_room_admin_email($data['id'], ($data['rep_type'] != REP_NONE));
-      if (!empty($email))
-      {
-        $to[] = $email;
-      }
-    }
-    else
-    {
-      $to[] = $data['room_admin_email'];
+      $to = address_merge($to, get_room_admin_email($previous));
     }
   }
 
@@ -894,51 +771,48 @@ function create_addresses($data, $action)
       $to[] = $booker->mailbox();
     }
   }
-  // In case $to and $cc are empty, no need to go further
-  if (empty($to) && empty($cc))
-  {
-    return false;
-  }
 
   $addresses = array();
   $addresses['from'] = $from;
-  $addresses['to']   = get_address_list($to);
-  $addresses['cc'] = get_address_list($cc);
+  $addresses['reply_to'] = (empty($reply_to)) ? '' : get_address_list($reply_to);
+  $addresses['to'] = (empty($to)) ? '' : get_address_list($to);
+  $addresses['cc'] = (empty($cc)) ? '' : get_address_list($cc);
+
   return $addresses;
 }
 
 
-// }}}
-// {{{ notifyAdminOnBooking()
-
 /**
- * Send email to administrator to notify a new/changed entry.
+ * Generate an email notification.
  *
- * @param array   $data          contains the data for this entry
- * @param array   $mail_previous contains the data for the previous entry, or is an empty array
- * @param bool    $new_entry     whether this is a new entry or not
- * @param bool    $series        whether this is a series or not
- * @param   array $start_times   an array of start times that have been made
- * @param string  $action        the booking action (eg "delete", "more_info", etc.)
- * @param string  $note          a note that is used with "more_info"
+ * @param array $data The booking data
+ * @param array $previous The previous booking data, or an empty array if none
+ * @param bool $is_series Whether this is a series or not
+ * @param string $action The booking action (ie 'approve', 'book', 'delete', 'more_info', 'reject' or 'remind')
+ * @param int[] $start_times An array of start times that have been made or deleted
+ * @param string|null $note A note that is used with 'more_info' and 'reject'
  */
-function notifyAdminOnBooking($data, $mail_previous, $new_entry, $series, $start_times, $action="book", $note='')
+function notify_by_email(array $data, array $previous, bool $is_series, string $action, array $start_times, ?string $note=null) : void
 {
-  global $mail_settings, $enable_periods;
-  global $mrbs_company;
+  global $mail_settings, $enable_periods, $mrbs_company;
+  global $timezone;
 
-  mail_debug('Preparing email for new or changed booking ...');
-
-  // Add some values to the $data array before we go and create the addresses
-  if (!$new_entry)
+  if (!in_array($action, ['approve', 'book', 'delete', 'more_info', 'reject', 'remind']))
   {
-    $data['area_admin_email'] = (!empty($mail_previous['area_admin_email'])) ? $mail_previous['area_admin_email'] : NULL;
-    $data['room_admin_email'] = (!empty($mail_previous['room_admin_email'])) ? $mail_previous['room_admin_email'] : NULL;
+    throw new InvalidArgumentException("Invalid action: $action");
+  }
+
+  mail_debug("Preparing email; action = '" . $action . "'");
+
+  if (in_array($action, ['delete', 'reject']))
+  {
+    // As we are going to cancel this booking, we need to increment the iCalendar sequence number
+    $data['ical_sequence']++;
   }
 
   // Set up the addresses (from, to and cc)
-  $addresses = create_addresses($data, $action);
-  if ($addresses === FALSE)
+  $addresses = create_addresses($data, $previous, $action);
+  if (empty($addresses['to']) && empty($addresses['cc']))
   {
     mail_debug('Email abandoned: no addresses.');
     return;
@@ -948,179 +822,111 @@ function notifyAdminOnBooking($data, $mail_previous, $new_entry, $series, $start
   //
   // If we're sending iCalendar notifications, then it seems that some calendar
   // applications use the email subject as the booking title instead of the iCal
-  // SUMMARY field.   As far as I can see this is wrong, but as a circumvention
-  // we'll put the booking title in the email subject line.   (See also
-  // SF Tracker id 3297799)
+  // SUMMARY field.  This seems to be wrong, but as a circumvention we'll put the
+  // booking title in the email subject line.  (See also SF Tracker id 3297799.)
   if ($mail_settings['icalendar'] && !$enable_periods)
   {
     $subject = $data['name'];
   }
   else
   {
-    switch ($action)
-    {
-      case "approve":
-        $subject = get_mail_vocab("mail_subject_approved", $mrbs_company);
-        break;
-      case "more_info":
-        $subject = get_mail_vocab("mail_subject_more_info", $mrbs_company);
-        break;
-      case "remind":
-        $subject = get_mail_vocab("mail_subject_reminder", $mrbs_company);
-        break;
-      default:
-        if ($new_entry)
-        {
-          $subject = get_mail_vocab("mail_subject_new_entry", $mrbs_company);
-        }
-        else
-        {
-          $subject = get_mail_vocab("mail_subject_changed_entry", $mrbs_company);
-        }
-        break;
-    }
+    $tags = [
+      'approve' => 'mail_subject_approved',
+      'book' => (empty($previous)) ? 'mail_subject_new_entry' : 'mail_subject_changed_entry',
+      'delete' => 'mail_subject_delete',
+      'more_info' => 'mail_subject_more_info',
+      'reject' => 'mail_subject_rejected',
+      'remind' => 'mail_subject_reminder'
+    ];
+    $subject = get_mail_vocab($tags[$action], $mrbs_company);
   }
 
   // Create the text body
-  $compare = !$new_entry;
-  $text_body = array();
-  $text_body['content'] = create_body($data, $mail_previous, $compare, $series, $action, $start_times, false, $note);
+  $text_body = create_body($data, $previous, $is_series, $action, $start_times, false, $note);
 
   // Create the HTML body
-  $html_body = array();
   if ($mail_settings['html'])
   {
-    $html_body['content'] = create_body($data, $mail_previous, $compare, $series, $action, $start_times, true, $note);
-    $html_body['cid'] = generate_global_uid("html");
+    $html_body = create_body($data, $previous, $is_series, $action, $start_times, true, $note);
   }
 
-  // Create the iCalendar if required
-  // Don't add an iCalendar if we're using periods, because MRBS doesn't know when periods
-  // occur in the day, so can't construct a VEVENT.
+  // Create the iCalendar if required.
   // Don't add an iCalendar if this is a reminder or a request for more info because then
   // the recipient probably won't be able to reply to the email: we just want an ordinary
   // email and not a calendar notification.
-  $attachment = array();
-  if ($mail_settings['icalendar'] &&
-      !$enable_periods &&
-      !in_array($action, array('more_info', 'remind')))
+  if ($mail_settings['icalendar'] && !in_array($action, ['more_info', 'remind']))
   {
-    $attachment['method']   = "REQUEST";
-    $ical_components = array();
-    // TODO: the addresses have by this stage been MIME-encoded.  It would probably be better to
-    // TODO: pass unencoded addresses to create_ical_event() so that we don't have to decode them,
-    // TODO: as mb_decode_mimeheader() isn't guaranteed to exist.
-    $ical_components[] = create_ical_event($attachment['method'], $data, $addresses, $series);
-    $attachment['content']  = create_icalendar($attachment['method'], $ical_components);
-    $attachment['name']     = $mail_settings['ics_filename'] . ".ics";
+    try
+    {
+      // Create the iCalendar.
+      $method = (in_array($action, ['delete', 'reject'])) ? 'CANCEL' : 'REQUEST';
+      $calendar = new Calendar($method);
+      // Add in the VTIMEZONE component if we can.
+      if (false !== ($vtimezone = Timezone::createFromTimezoneName($timezone)))
+      {
+        $tzid = $timezone;
+        $calendar->addComponent($vtimezone);
+      }
+      $events = Event::createFromData($method, $data, $tzid ?? null, $addresses, $is_series, true);
+    }
+    catch (CalendarException $e)
+    {
+      // Don't do anything. We're not able to create an iCalendar, probably because we are using
+      // periods and the times for periods haven't been defined.
+    }
   }
 
-  MailQueue::add(
+  // If there is no iCalendar, then it's easy: we just add the email to the queue.
+  if (empty($events))
+  {
+    MailQueue::add(
       $addresses,
       $subject,
       $text_body,
-      $html_body,
-      $attachment,
-      get_mail_charset()
+      $html_body ?? null,
+      null,
+      Language::MAIL_CHARSET
     );
-}
-
-// }}}
-// {{{ notifyAdminOnDelete()
-
-/**
- * Send email to administrator to notify a new/changed entry.
- *
- * @param   array   $data      contains deleted entry data for email body
- * @param   array   $start_times an array of start times that have been deleted
- * @param   bool    $series    whether this is a series or not
- * @param   string  $action    the booking action (eg 'delete', 'more_info', etc.)
- * @param   string  $note      a note that is used with 'reject'
- */
-function notifyAdminOnDelete($data, $start_times, $series=false, $action='delete', $note='')
-{
-  global $mail_settings, $enable_periods;
-  global $mrbs_company;
-
-  if ($mail_settings['debug'])
-  {
-    mail_debug('Preparing email for deleted booking');
   }
-
-  // As we are going to cancel this booking we need to increment the iCalendar
-  // sequence number
-  $data['ical_sequence']++;
-
-  // Set up the addresses (from, to and cc)
-  $addresses = create_addresses($data, $action);
-  if ($addresses === FALSE)
-  {
-    mail_debug('Email abandoned: no addresses.');
-    return;
-  }
-
-  // Set the subject
-  //
-  // If we're sending iCalendar notifications, then it seems that some calendar
-  // applications use the email subject as the booking title instead of the iCal
-  // SUMMARY field.   As far as I can see this is wrong, but as a circumvention
-  // we'll put the booking title in the email subject line.   (See also
-  // SF Tracker id 3297799)
-  if ($mail_settings['icalendar'] && !$enable_periods)
-  {
-    $subject = $data['name'];
-  }
-  elseif ($action == "reject")
-  {
-    $subject = get_mail_vocab("mail_subject_rejected", $mrbs_company);
-  }
+  // Otherwise we need to send separate emails for each event.  That's because most email clients
+  // will only automatically add to a calendar the first event in the iCalendar file.
   else
   {
-    $subject = get_mail_vocab("mail_subject_delete", $mrbs_company);
+    foreach ($events as $event)
+    {
+      $this_calendar = clone $calendar;
+      // Add in the VEVENT component.
+      // TODO: the addresses have by this stage been MIME-encoded.  It would probably be better to
+      // TODO: pass unencoded addresses to createFromData() so that we don't have to decode them,
+      // TODO: as mb_decode_mimeheader() isn't guaranteed to exist.
+      $this_calendar->addComponent($event);
+      $attachment = [
+        'content' => $this_calendar->toString(),
+        'name' => $mail_settings['ics_filename'] . ".ics",
+        'method' => $method
+      ];
+      MailQueue::add(
+        $addresses,
+        $subject,
+        $text_body,
+        $html_body ?? null,
+        $attachment,
+        Language::MAIL_CHARSET
+      );
+      unset($this_calendar);
+    }
   }
-
-  // Create the text body
-  $text_body = array();
-  $text_body['content'] = create_body($data, null, false, $series, $action, $start_times, false, $note);
-
-  // Create the HTML body
-  $html_body = array();
-  if ($mail_settings['html'])
-  {
-    $html_body['content'] = create_body($data, null, false, $series, $action, $start_times, true, $note);
-    $html_body['cid'] = generate_global_uid("html");
-  }
-
-  // Set up the attachment
-  $attachment = array();
-  if ($mail_settings['icalendar'] && !$enable_periods)
-  {
-    $attachment['method']   = "CANCEL";
-    $ical_components = array();
-    $ical_components[] = create_ical_event($attachment['method'], $data, $addresses, $series);
-    $attachment['content']  = create_icalendar($attachment['method'], $ical_components);
-    $attachment['name']     = $mail_settings['ics_filename'] . ".ics";
-  }
-
-  MailQueue::add(
-      $addresses,
-      $subject,
-      $text_body,
-      $html_body,
-      $attachment,
-      get_mail_charset()
-    );
 }
 
 
-function debug_output($message)
+function debug_output(string $message) : void
 {
   global $mail_settings;
 
   if (isset($mail_settings['debug_output']) &&
       ($mail_settings['debug_output'] == 'browser'))
   {
-    echo htmlspecialchars($message) . "<br>\n";
+    echo escape_html($message) . "<br>\n";
     // flush in case they have output_buffering configured on
     if (ob_get_length() !== FALSE)
     {
@@ -1135,7 +941,7 @@ function debug_output($message)
 }
 
 
-function mail_debug($message)
+function mail_debug(string $message) : void
 {
   global $mail_settings;
 

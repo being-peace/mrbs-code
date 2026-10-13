@@ -1,18 +1,20 @@
 <?php
+declare(strict_types=1);
 namespace MRBS;
 
-use MRBS\Form\Form;
-use MRBS\Form\ElementInputSubmit;
+use MRBS\Errors\Errors;
 use MRBS\Form\ElementFieldset;
+use MRBS\Form\ElementInputSubmit;
 use MRBS\Form\ElementP;
 use MRBS\Form\FieldInputCheckbox;
-use MRBS\Form\FieldInputRadioGroup;
 use MRBS\Form\FieldInputEmail;
 use MRBS\Form\FieldInputNumber;
+use MRBS\Form\FieldInputRadioGroup;
 use MRBS\Form\FieldInputSubmit;
 use MRBS\Form\FieldInputText;
 use MRBS\Form\FieldSelect;
 use MRBS\Form\FieldTextarea;
+use MRBS\Form\Form;
 
 require "defaultincludes.inc";
 require_once "mrbs_sql.inc";
@@ -66,6 +68,8 @@ function get_custom_fields($data)
 {
   global $standard_fields, $text_input_max;
 
+  // TODO: have a common way of generating custom fields for all tables
+
   $result = array();
   $disabled = !is_admin();
 
@@ -99,7 +103,7 @@ function get_custom_fields($data)
         $field->setLabel($label)
               ->setControlAttributes(array('name'     => $name,
                                            'disabled' => $disabled))
-              ->setControlText($value);
+              ->setControlText($value ?? '');
       }
       // Otherwise output a text input
       else
@@ -119,7 +123,7 @@ function get_custom_fields($data)
 }
 
 
-function get_fieldset_errors($errors)
+function get_fieldset_errors(array $errors) : ElementFieldset
 {
   $fieldset = new ElementFieldset();
   $fieldset->addLegend('')
@@ -136,7 +140,7 @@ function get_fieldset_errors($errors)
 }
 
 
-function get_fieldset_general($data)
+function get_fieldset_general(array $data) : ElementFieldset
 {
   global $auth;
 
@@ -145,7 +149,7 @@ function get_fieldset_general($data)
   $fieldset = new ElementFieldset();
 
   // The area select
-  $areas = get_area_names($all=true);
+  $areas = get_area_names(true);
   $field = new FieldSelect();
   $field->setLabel(get_vocab('area'))
         ->setControlAttributes(array('name'     => 'new_area',
@@ -223,13 +227,14 @@ function get_fieldset_general($data)
   {
     $field = new FieldSelect();
     $field->setAttribute('class', 'multiline')
-      ->setLabel(get_vocab('invalid_types'))
-      ->setLabelAttribute('title', get_vocab('invalid_types_note'))
-      ->setControlAttributes(array(
-          'name' => 'invalid_types[]',
-          'multiple' => true)
-        )
-      ->addSelectOptions($type_options, $data['invalid_types'], true);
+          ->setLabel(get_vocab('invalid_types'))
+          ->setLabelAttribute('title', get_vocab('invalid_types_note'))
+          ->setControlAttributes(array(
+              'name'      => 'invalid_types[]',
+              'title'     => get_vocab('select_note'),
+              'multiple'  => true)
+            )
+          ->addSelectOptions($type_options, $data['invalid_types'], true);
     $fieldset->addElement($field);
   }
 
@@ -241,7 +246,7 @@ function get_fieldset_general($data)
     $field->setLabel(get_vocab('custom_html'))
           ->setLabelAttribute('title', get_vocab('custom_html_note'))
           ->setControlAttribute('name', 'custom_html')
-          ->setControlText($data['custom_html']);
+          ->setControlText($data['custom_html'] ?? '');
     $fieldset->addElement($field);
   }
 
@@ -253,8 +258,11 @@ function get_fieldset_general($data)
   $field = new FieldInputSubmit();
 
   $back = new ElementInputSubmit();
-  $back->setAttributes(array('value'      => get_vocab('back'),
-                             'formaction' => multisite('admin.php')));
+  $back->setAttributes(array(
+      'value'           => get_vocab('back'),
+      'formnovalidate'  => true,
+      'formaction'      => multisite('admin.php'))
+    );
   $field->setAttribute('class', 'buttons')
         ->addLabelClass('no_suffix')
         ->addLabelElement($back)
@@ -287,18 +295,17 @@ print_header($context);
 // Get the details for this room
 if (empty($room) || is_null($data = get_room_details($room)))
 {
-  fatal_error(get_vocab('invalid_room'));
+  Errors::fatalError(get_vocab('invalid_room'));
 }
 
 $errors = get_form_var('errors', 'array');
 
 // Generate the form
-$form = new Form();
+$form = new Form(Form::METHOD_POST);
 
 $attributes = array('id'     => 'edit_room',
                     'class'  => 'standard',
-                    'action' => multisite('edit_room_handler.php'),
-                    'method' => 'post');
+                    'action' => multisite('edit_room_handler.php'));
 
 // Non-admins will only be allowed to view room details, not change them
 $legend = (is_admin()) ? get_vocab('editroom') : get_vocab('viewroom');
@@ -325,7 +332,7 @@ if ($auth['allow_custom_html'])
 {
   // Now the custom HTML
   echo "<div id=\"div_custom_html\">\n";
-  // no htmlspecialchars() because we want the HTML!
+  // no escape_html() because we want the HTML!
   echo (isset($data['custom_html'])) ? $data['custom_html'] . "\n" : "";
   echo "</div>\n";
 }

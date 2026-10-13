@@ -4,18 +4,11 @@ namespace MRBS\Auth;
 
 class AuthConfig extends Auth
 {
-  /* validateUser($user, $pass)
-   *
-   * Checks if the specified username/password pair are valid
-   *
-   * $user  - The user name
-   * $pass  - The password
-   *
-   * Returns:
-   *   false    - The pair are invalid or do not exist
-   *   string   - The validated username
-   */
-  public function validateUser(?string $user, ?string $pass)
+  public function validateUser(
+    #[\SensitiveParameter]
+    ?string $user,
+    #[\SensitiveParameter]
+    ?string $pass)
   {
     global $auth;
 
@@ -28,8 +21,8 @@ class AuthConfig extends Auth
     if ((isset($auth["user"][$user]) &&
         ($auth["user"][$user] == $pass)
       ) ||
-      (isset($auth["user"][\MRBS\utf8_strtolower($user)]) &&
-        ($auth["user"][\MRBS\utf8_strtolower($user)] == $pass)
+      (isset($auth["user"][mb_strtolower($user)]) &&
+        ($auth["user"][mb_strtolower($user)] == $pass)
       ))
     {
       return $user;    // User validated

@@ -1,16 +1,14 @@
 <?php
+declare(strict_types=1);
 namespace MRBS;
 
 require "../defaultincludes.inc";
 
 http_headers(array("Content-type: application/x-javascript"),
                    60*30);  // 30 minute expiry
-
-if ($use_strict)
-{
-  echo "'use strict';\n";
-}
 ?>
+
+'use strict';
 
 function checkSourceType(object) {
   var isFile = (object.val() === 'file');
@@ -20,7 +18,7 @@ function checkSourceType(object) {
   // Disable the URL field if it's not being used in order to
   // stop the browser trying to validate the content.
   ?>
-  $('input[name="url"').prop('disabled', isFile);
+  $('input[name="url"]').prop('disabled', isFile);
 }
 
 $(document).on('page_ready', function() {

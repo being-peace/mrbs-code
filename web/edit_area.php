@@ -1,12 +1,14 @@
 <?php
+declare(strict_types=1);
 namespace MRBS;
 
-use MRBS\Form\Form;
+use MRBS\Errors\Errors;
 use MRBS\Form\ElementDiv;
+use MRBS\Form\ElementFieldset;
 use MRBS\Form\ElementInputCheckbox;
 use MRBS\Form\ElementInputNumber;
 use MRBS\Form\ElementInputSubmit;
-use MRBS\Form\ElementFieldset;
+use MRBS\Form\ElementInputTime;
 use MRBS\Form\ElementLegend;
 use MRBS\Form\ElementP;
 use MRBS\Form\ElementSelect;
@@ -15,9 +17,9 @@ use MRBS\Form\FieldButton;
 use MRBS\Form\FieldDiv;
 use MRBS\Form\FieldInputCheckbox;
 use MRBS\Form\FieldInputCheckboxGroup;
-use MRBS\Form\FieldInputRadioGroup;
 use MRBS\Form\FieldInputEmail;
 use MRBS\Form\FieldInputNumber;
+use MRBS\Form\FieldInputRadioGroup;
 use MRBS\Form\FieldInputSubmit;
 use MRBS\Form\FieldInputText;
 use MRBS\Form\FieldInputTime;
@@ -25,11 +27,13 @@ use MRBS\Form\FieldSelect;
 use MRBS\Form\FieldSpan;
 use MRBS\Form\FieldTextarea;
 use MRBS\Form\FieldTimeWithUnits;
+use MRBS\Form\Form;
+use stdClass;
 
 require "defaultincludes.inc";
 require_once "mrbs_sql.inc";
 
-function get_timezone_options()
+function get_timezone_options() : array
 {
   global $zoneinfo_outlook_compatible;
 
@@ -39,7 +43,7 @@ function get_timezone_options()
 
   foreach ($timezone_identifiers as $value)
   {
-    if (utf8_strpos($value, '/') === FALSE)
+    if (mb_strpos($value, '/') === FALSE)
     {
       // There are some timezone identifiers (eg 'UTC') on some operating
       // systems that don't fit the Continent/City model.   We'll put them
@@ -70,7 +74,7 @@ function get_timezone_options()
 }
 
 
-function get_fieldset_errors(array $errors)
+function get_fieldset_errors(array $errors) : ElementFieldset
 {
   $fieldset = new ElementFieldset();
   $fieldset->addLegend('')
@@ -87,7 +91,7 @@ function get_fieldset_errors(array $errors)
 }
 
 
-function get_fieldset_general(array $data)
+function get_fieldset_general(array $data) : ElementFieldset
 {
   global $timezone, $auth;
 
@@ -131,7 +135,7 @@ function get_fieldset_general(array $data)
     $field->setLabel(get_vocab('custom_html'))
       ->setLabelAttribute('title', get_vocab('custom_html_note'))
       ->setControlAttribute('name', 'custom_html')
-      ->setControlText($data['custom_html']);
+      ->setControlText($data['custom_html'] ?? '');
     $fieldset->addElement($field);
   }
 
@@ -186,7 +190,7 @@ function get_fieldset_general(array $data)
 }
 
 
-function get_fieldset_times()
+function get_fieldset_times() : ElementFieldset
 {
   global $enable_periods;
   global $morningstarts, $morningstarts_minutes;
@@ -208,7 +212,7 @@ function get_fieldset_times()
        ->setText(' (' . get_vocab('times_only') . ')');
 
   $legend = new ElementLegend();
-  $legend->setText(get_vocab('time_settings'), $text_at_start=true)
+  $legend->setText(get_vocab('time_settings'), true)
          ->addElement($span);
 
   $fieldset->addLegend($legend);
@@ -269,9 +273,9 @@ function get_fieldset_times()
 }
 
 
-function get_fieldset_periods()
+function get_fieldset_periods() : ElementFieldset
 {
-  global $enable_periods, $periods;
+  global $enable_periods, $area;
 
   $fieldset = new ElementFieldset();
   $fieldset->setAttribute('id', 'period_settings');
@@ -284,23 +288,70 @@ function get_fieldset_periods()
   }
   $fieldset->addLegend(get_vocab('period_settings'));
 
+  $this_area_periods = Periods::getForArea($area);
   // For the JavaScript to work, and MRBS to make sense, there has to be at least
   // one period defined.  So if for some reason, which shouldn't happen, there aren't
   // any periods defined, then force there to be one by creating a single period name
   // with an empty string.   Because the input is a required input, then it will have
   // to be saved with a period name.
-  $period_names = empty($periods) ? array('') : $periods;
-
-  foreach ($period_names as $period_name)
+  if (empty($this_area_periods))
   {
+    $this_area_periods = [new Period('')];
+    $using_period_times = false;
+  }
+  else
+  {
+    $using_period_times = isset($this_area_periods->current()->start);
+  }
+
+  // TODO: Store use_period_times in the database, so that the times are not lost.
+  // TODO: At the moment it's just used by the JavaScript to toggle the display.
+  $field = new FieldInputCheckbox();
+  $field->setLabel(get_vocab('use_period_times'))
+        ->setControlAttribute('name', 'use_period_times')
+        ->setControlChecked($using_period_times);
+  $fieldset->addElement($field);
+
+  foreach ($this_area_periods as $period)
+  {
+    // The period name
     $field = new FieldInputText();
+
+    // The period times
+    $period_times = new ElementDiv();
+    $period_times->setAttribute('class', 'period_times');
+
+    // The period start time
+    $start = new ElementInputTime();
+    $start->setAttributes(['name' => 'period_starts[]', 'required' => true]);
+    if (isset($period->start))
+    {
+      $start->setAttribute('value', $period->start);
+    }
+    // A separator; CSS will fill its content.
+    $separator = new ElementSpan();
+    $separator->setAttribute('class', 'period_separator');
+    // The period end time
+    $end = new ElementInputTime();
+    $end->setAttributes(['name' => 'period_ends[]', 'required' => true]);
+    if (isset($period->end))
+    {
+      $end->setAttribute('value', $period->end);
+    }
+
+    $period_times->addElement($start);
+    $period_times->addElement($separator);
+    $period_times->addElement($end);
+
+    // The delete button; CSS will fill its content.
     $span = new ElementSpan();
     $span->setAttribute('class', 'delete_period');
     $field->setAttribute('class', 'period_name')
           ->setControlAttributes(array('name'     => 'area_periods[]',
-                                       'value'    => $period_name,
+                                       'value'    => $period->name,
                                        'required' => true),
                                  false)
+          ->addElement($period_times)
           ->addElement($span);
     $fieldset->addElement($field);
   }
@@ -315,7 +366,7 @@ function get_fieldset_periods()
 }
 
 
-function get_fieldset_create_ahead()
+function get_fieldset_create_ahead() : ElementFieldset
 {
   global $min_create_ahead_secs, $max_create_ahead_secs,
          $min_create_ahead_enabled, $max_create_ahead_enabled;
@@ -334,6 +385,7 @@ function get_fieldset_create_ahead()
   $fieldset->addElement($field);
 
   // Maximum create ahead
+  // TODO: add some kind of note about exempt types
   $param_names = array(
       'enabler'  => 'area_max_create_ahead_enabled',
       'quantity' => 'area_max_create_ahead_value',
@@ -347,7 +399,7 @@ function get_fieldset_create_ahead()
 }
 
 
-function get_fieldset_delete_ahead()
+function get_fieldset_delete_ahead() : ElementFieldset
 {
   global $min_delete_ahead_secs, $max_delete_ahead_secs,
          $min_delete_ahead_enabled, $max_delete_ahead_enabled;
@@ -379,7 +431,7 @@ function get_fieldset_delete_ahead()
 }
 
 
-function get_fieldset_max_number()
+function get_fieldset_max_number() : ElementFieldset
 {
   global $interval_types,
          $max_per_interval_area_enabled, $max_per_interval_global_enabled,
@@ -410,14 +462,14 @@ function get_fieldset_max_number()
     $field = new FieldDiv;
 
     $checkbox_area = new ElementInputCheckbox();
-    $checkbox_area->setAttributes(array('name'  => "area_max_per_${interval_type}_enabled",
-                                        'id'    => "area_max_per_${interval_type}_enabled",
+    $checkbox_area->setAttributes(array('name'  => "area_max_per_{$interval_type}_enabled",
+                                        'id'    => "area_max_per_{$interval_type}_enabled",
                                         'class' => 'enabler'))
                   ->setChecked($max_per_interval_area_enabled[$interval_type]);
 
     $number_area = new ElementInputNumber();
     $number_area->setAttributes(array('min'   => '0',
-                                      'name'  => "area_max_per_${interval_type}",
+                                      'name'  => "area_max_per_$interval_type",
                                       'value' => $max_per_interval_area[$interval_type]));
 
     // Wrap the area and global controls in <div>s.  It'll make the CSS easier.
@@ -439,7 +491,7 @@ function get_fieldset_max_number()
     $div_global->addElement($checkbox_global)
                ->addElement($number_global);
 
-    $field->setLabel(get_vocab("max_per_${interval_type}"))
+    $field->setLabel(get_vocab("max_per_$interval_type"))
           ->addControlElement($div_area)
           ->addControlElement($div_global);
 
@@ -450,7 +502,7 @@ function get_fieldset_max_number()
 }
 
 
-function get_fieldset_max_secs()
+function get_fieldset_max_secs() : ElementFieldset
 {
   global $interval_types,
          $max_secs_per_interval_area_enabled, $max_secs_per_interval_global_enabled,
@@ -487,8 +539,8 @@ function get_fieldset_max_secs()
     $field = new FieldDiv;
 
     $checkbox_area = new ElementInputCheckbox();
-    $checkbox_area->setAttributes(array('name'  => "area_max_secs_per_${interval_type}_enabled",
-                                        'id'    => "area_max_secs_per_${interval_type}_enabled",
+    $checkbox_area->setAttributes(array('name'  => "area_max_secs_per_{$interval_type}_enabled",
+                                        'id'    => "area_max_secs_per_{$interval_type}_enabled",
                                         'class' => 'enabler'))
                   ->setChecked($max_secs_per_interval_area_enabled[$interval_type]);
 
@@ -497,12 +549,12 @@ function get_fieldset_max_secs()
     $options = Form::getTimeUnitOptions($max_unit);
 
     $select = new ElementSelect();
-    $select->setAttribute('name', "area_max_secs_per_${interval_type}_units")
+    $select->setAttribute('name', "area_max_secs_per_{$interval_type}_units")
            ->addSelectOptions($options, array_search($units, $options), true);
 
     $time_area = new ElementInputNumber();
     $time_area->setAttributes(array('min'   => '0',
-                                    'name'  => "area_max_secs_per_${interval_type}",
+                                    'name'  => "area_max_secs_per_$interval_type",
                                     'value' => $max));
 
     // Wrap the area and global controls in <div>s.  It'll make the CSS easier.
@@ -533,7 +585,7 @@ function get_fieldset_max_secs()
                ->addElement($time_global)
                ->addElement($select);
 
-    $field->setLabel(get_vocab("max_secs_per_${interval_type}"))
+    $field->setLabel(get_vocab("max_secs_per_$interval_type"))
           ->addControlElement($div_area)
           ->addControlElement($div_global);
 
@@ -544,7 +596,7 @@ function get_fieldset_max_secs()
 }
 
 
-function get_fieldset_max_duration()
+function get_fieldset_max_duration() : ElementFieldset
 {
   global $max_duration_enabled, $max_duration_secs, $max_duration_periods;
 
@@ -588,7 +640,7 @@ function get_fieldset_max_duration()
 }
 
 
-function get_fieldset_booking_policies()
+function get_fieldset_booking_policies() : ElementFieldset
 {
   global $enable_periods;
 
@@ -616,7 +668,7 @@ function get_fieldset_booking_policies()
 }
 
 
-function get_fieldset_confirmation_settings()
+function get_fieldset_confirmation_settings() : ElementFieldset
 {
   global $confirmation_enabled, $confirmed_default;
 
@@ -643,7 +695,7 @@ function get_fieldset_confirmation_settings()
 }
 
 
-function get_fieldset_approval_settings()
+function get_fieldset_approval_settings() : ElementFieldset
 {
   global $approval_enabled, $reminders_enabled;
 
@@ -668,7 +720,7 @@ function get_fieldset_approval_settings()
 }
 
 
-function get_fieldset_privacy_settings()
+function get_fieldset_privacy_settings() : ElementFieldset
 {
   global $private_enabled, $private_mandatory, $private_default;
 
@@ -702,7 +754,7 @@ function get_fieldset_privacy_settings()
 }
 
 
-function get_fieldset_privacy_display()
+function get_fieldset_privacy_display() : ElementFieldset
 {
   global $private_override;
 
@@ -725,7 +777,7 @@ function get_fieldset_privacy_display()
 }
 
 
-function get_fieldset_submit_buttons()
+function get_fieldset_submit_buttons() : ElementFieldset
 {
   $fieldset = new ElementFieldset();
 
@@ -753,8 +805,8 @@ $context = array(
   'year'      => $year,
   'month'     => $month,
   'day'       => $day,
-  'area'      => isset($area) ? $area : null,
-  'room'      => isset($room) ? $room : null
+  'area'      => $area ?? null,
+  'room'      => $room ?? null
 );
 
 print_header($context);
@@ -762,18 +814,17 @@ print_header($context);
 // Get the details for this area
 if (!isset($area) || is_null($data = get_area_details($area)))
 {
-  fatal_error(get_vocab('invalid_area'));
+  Errors::fatalError(get_vocab('invalid_area'));
 }
 
 $errors = get_form_var('errors', 'array');
 
 // Generate the form
-$form = new Form();
+$form = new Form(Form::METHOD_POST);
 
 $attributes = array('id'     => 'edit_area',
                     'class'  => 'standard',
-                    'action' => multisite('edit_area_handler.php'),
-                    'method' => 'post');
+                    'action' => multisite('edit_area_handler.php'));
 
 $form->setAttributes($attributes)
      ->addHiddenInput('area', $area);

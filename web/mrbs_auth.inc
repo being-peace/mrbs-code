@@ -1,30 +1,10 @@
 <?php
+declare(strict_types=1);
 namespace MRBS;
 
 use MRBS\Auth\AuthFactory;
+use MRBS\Session\Session;
 use MRBS\Session\SessionFactory;
-
-
-if (!isset($auth['session']))
-{
-  switch ($auth['type'])
-  {
-    case 'joomla':
-    case 'saml':
-    case 'wordpress':
-      $auth['session'] = $auth['type'];
-      break;
-    default:
-      $auth['session'] = 'php';
-      break;
-  }
-}
-
-
-if (method_exists(session(), 'processForm'))
-{
-  session()->processForm();
-}
 
 
 // Convenience wrapper function to provide access to an Auth object
@@ -44,7 +24,7 @@ function auth()
 
 
 // Convenience wrapper function to provide access to a Session object
-function session()
+function session() : Session
 {
   global $auth;
 
@@ -59,15 +39,21 @@ function session()
 }
 
 
+
 // Checks if a page is open to users, using the config variables
 // $auth['only_admin_can_book'] and $auth['only_admin_can_book_before']
-function is_open_to_users()
+function booking_level() : int
 {
   global $auth;
 
+  if ($auth['allow_anonymous_booking'])
+  {
+    return 0;
+  }
+
   if ($auth['only_admin_can_book'])
   {
-    return false;
+    return 2;
   }
   elseif ($auth['only_admin_can_book_before'])
   {
@@ -76,15 +62,15 @@ function is_open_to_users()
     {
       $message = "Could not calculate time from '" . $auth['only_admin_can_book_before'] . "'.";
       trigger_error($message);
-      return false;
+      return 2;
     }
     else
     {
-      return (time() >= $go_live);
+      return (time() >= $go_live) ? 1 : 2;
     }
   }
 
-  return true;
+  return 1;
 }
 
 
@@ -113,8 +99,11 @@ function get_page_level($page)
     // These pages reveal usernames, which could be of assistance to someone trying to
     // break into the system, so users are required to be logged in before viewing them.
     case 'search.php':
-    case 'view_entry.php':
       $result = 1;
+      break;
+
+    case 'view_entry.php':
+      $result = ($auth['allow_anonymous_booking']) ? 0 : 1;
       break;
 
     // These pages are set to have a minimum access level of 1 as ordinary users
@@ -123,6 +112,8 @@ function get_page_level($page)
     // made within the page to prevent ordinary users gaining access to admin features.
     case 'admin.php':
     case 'approve_entry_handler.php':   // Ordinary users are allowed to remind admins
+    case 'edit_message.php':            // Booking admins can edit messages
+    case 'edit_message_handler.php':    // Booking admins can edit messages
     case 'edit_room.php':               // Ordinary users can view room details
     case 'edit_users.php':              // Ordinary users can edit their own details
     case 'pending.php':                 // Ordinary users can view their own entries
@@ -136,21 +127,10 @@ function get_page_level($page)
     case 'del_entry.php':
     case 'edit_entry.php':
     case 'edit_entry_handler.php':
-      return (is_open_to_users()) ? 1 : 2;
+      return booking_level();
       break;
 
-    // These pages only contain admin features
-    case 'add.php':                     // Adds a room
-    case 'del.php':                     // Deletes a room
-    case 'del_entries.php':             // Ajax page for bulk deletion of entries
-    case 'edit_area.php':
-    case 'edit_area_handler.php':
-    case 'edit_room_handler.php':
-    case 'import.php':
-    case 'report.php':
-      $result = 2;
-      break;
-
+    // Everything else is for admins only
     default:
       $result = (isset($max_level)) ? $max_level : 2;
       break;
@@ -159,6 +139,12 @@ function get_page_level($page)
   if ($auth['deny_public_access'])
   {
     $result = max($result, 1);
+  }
+
+  // Can always access index.php when in kiosk mode
+  if ($page == 'index.php' && is_kiosk_mode())
+  {
+    $result = 0;
   }
 
   return $result;
@@ -176,7 +162,7 @@ function get_page_level($page)
  *   false - The user does not have the required access
  *   true  - The user has the required access
  */
-function getAuthorised($level, $returl)
+function getAuthorised($level, $returl) : bool
 {
   // If the minimum level is zero (or not set) then they are
   // authorised, whoever they are
@@ -205,7 +191,7 @@ function getAuthorised($level, $returl)
 /* checkAuthorised()
  *
  * Checks to see that a user is authorised to access a page.
- * If they are not, then shows an Access Denied message and exits.
+ * If they are not, then shows an "Access Denied" message and exits.
  *
  */
 function checkAuthorised($page, $just_check=false)
@@ -266,7 +252,7 @@ function checkAuthorised($page, $just_check=false)
  *   false  - The user does not have the required access
  *   true   - The user has the required access
  */
-function getWritable($creator, $rooms=null, $all=true)
+function getWritable($creator, $rooms=null, $all=true) : bool
 {
   if (is_array($rooms) && (count($rooms) > 0))
   {
@@ -313,7 +299,7 @@ function getWritable($creator, $rooms=null, $all=true)
 
   // Always allowed to modify your own stuff
   $mrbs_user = session()->getCurrentUser();
-  if (isset($mrbs_user) && (strcasecmp($creator, $mrbs_user->username) === 0))
+  if (isset($mrbs_user) && isset($creator) && (compare_usernames($creator, $mrbs_user->username) === 0))
   {
     return true;
   }
@@ -354,10 +340,11 @@ function showAccessDenied($view=null, $view_all=null, $year=null, $month=null, $
   echo "<div>\n";
   echo "<h1>" . get_vocab("accessdenied") . "</h1>\n";
   echo "<p>" . get_vocab("norights") . "</p>\n";
-  if (isset($server['HTTP_REFERER']))
+  $referrer = session()->getReferrer();
+  if (isset($referrer))
   {
     echo "<p>\n";
-    echo "<a href=\"" . htmlspecialchars($server['HTTP_REFERER']) . "\">\n" . get_vocab("returnprev") . "</a>\n";
+    echo "<a href=\"" . escape_html($referrer) . "\">\n" . get_vocab("returnprev") . "</a>\n";
     echo "</p>\n";
   }
   echo "</div>\n";
@@ -368,7 +355,7 @@ function showAccessDenied($view=null, $view_all=null, $year=null, $month=null, $
 
 
 // Checks whether the current user has admin rights
-function is_admin()
+function is_admin() : bool
 {
   global $max_level;
 
@@ -450,7 +437,7 @@ function may_edit_and_view_all_bookings($rooms=null, $all=true)
 //
 // Returns:  TRUE if the user is allowed has booking admin rights for
 //           the room(s); otherwise FALSE
-function is_book_admin($rooms=null, $all=true)
+function is_book_admin($rooms=null, $all=true) : bool
 {
   global $min_booking_admin_level;
 
@@ -498,7 +485,7 @@ function is_book_admin($rooms=null, $all=true)
 
 
 // Checks whether the current user has user editing rights
-function is_user_admin()
+function is_user_admin() : bool
 {
   global $min_user_editing_level;
 
@@ -510,14 +497,14 @@ function is_user_admin()
 
 // Checks whether a room is visible to the current user
 // Doesn't do anything at the moment, but allows for customisation or future development
-function is_visible($room)
+function is_visible($room) : bool
 {
   return true;
 }
 
 
 // Checks whether a user is allowed to register other users for events
-function can_register_others($room_id=null)
+function can_register_others($room_id=null) : bool
 {
   global $auth;
 
@@ -529,4 +516,34 @@ function can_register_others($room_id=null)
   }
 
   return $auth['users_can_register_others'] || is_book_admin($room_id);
+}
+
+
+// Checks whether the current user can see others' email addresses
+function can_see_email_addresses() : bool
+{
+  global $auth, $is_private_field;
+
+  // Admins can see everything
+  if (is_admin())
+  {
+    return true;
+  }
+
+  $mrbs_user = session()->getCurrentUser();
+
+  // Don't expose email addresses to the public
+  if (!isset($mrbs_user))
+  {
+    return false;
+  }
+
+  // MRBS must be configured for logged-in users to see others' details
+  if ($auth['only_admin_can_see_other_users'])
+  {
+    return false;
+  }
+
+  // Otherwise the email field in the users table must not be private
+  return (!auth()->canCreateUsers() || empty($is_private_field['users.email']));
 }

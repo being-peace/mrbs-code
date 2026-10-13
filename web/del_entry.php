@@ -1,10 +1,10 @@
 <?php
+declare(strict_types=1);
 namespace MRBS;
 
 use MRBS\Form\Form;
 
-
-// Deletes an entry, or a series.    The $id is always the id of
+// Deletes an entry, or a series.  The $id is always the id of
 // an individual entry.   If $series is set then the entire series
 // of which $id is a member should be deleted. [Note - this use of
 // $series is inconsistent with use in the rest of MRBS where it
@@ -17,9 +17,9 @@ require_once "functions_mail.inc";
 
 // Get non-standard form variables
 $id = get_form_var('id', 'int', null, INPUT_POST);
-$series = get_form_var('series', 'int', null, INPUT_POST);
-$returl = get_form_var('returl', 'string', null, INPUT_POST);
-$action = get_form_var('action', 'string', null, INPUT_POST);
+$series = get_form_var('series', 'bool', null, INPUT_POST);
+$returl = get_form_var('returl', 'url_local', null, INPUT_POST);
+$action = get_form_var('action', 'string', 'delete', INPUT_POST);
 $note = get_form_var('note', 'string', '', INPUT_POST);
 
 // Check the CSRF token
@@ -53,10 +53,14 @@ if ($info = get_booking_info($id, FALSE, TRUE))
   }
   if ($authorised)
   {
-    $day   = utf8_strftime("%d", $info["start_time"]);
-    $month = utf8_strftime("%m", $info["start_time"]);
-    $year  = utf8_strftime("%Y", $info["start_time"]);
-    $area  = mrbsGetRoomArea($info["room_id"]);
+    $day   = (int) date('d', $info['start_time']);
+    $month = (int) date('m', $info['start_time']);
+    $year  = (int) date('Y', $info['start_time']);
+    $area  = get_area($info["room_id"]);
+    if (empty($area))
+    {
+      throw new \Exception("Room " . $info['room_id'] . " does not exist");
+    }
     // Get the settings for this area (they will be needed for policy checking)
     get_area_settings($area);
 
@@ -69,7 +73,7 @@ if ($info = get_booking_info($id, FALSE, TRUE))
       // If this is an individual entry of a series then force the entry_type
       // to be a changed entry, so that when we create the iCalendar object we know that
       // we only want to delete the individual entry
-      if (!$series && ($mail_previous['rep_type'] != REP_NONE))
+      if (!$series && ($mail_previous['repeat_rule']->getType() != RepeatRule::NONE))
       {
         $mail_previous['entry_type'] = ENTRY_RPT_CHANGED;
       }
@@ -95,14 +99,7 @@ if ($info = get_booking_info($id, FALSE, TRUE))
         {
           $mail_previous['id'] = $mail_previous['repeat_id'];
         }
-        if (isset($action) && ($action == "reject"))
-        {
-          notifyAdminOnDelete($mail_previous, $start_times, $series, $action, $note);
-        }
-        else
-        {
-          notifyAdminOnDelete($mail_previous, $start_times, $series);
-        }
+        notify_by_email($mail_previous, [], $series, $action, $start_times, $note);
       }
 
     }

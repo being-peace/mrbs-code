@@ -14,6 +14,7 @@
 
 CREATE TABLE mrbs_area
 (
+  # tinyints and smallints in mrbs_area are assumed to represent booleans
   id                          int NOT NULL auto_increment,
   disabled                    tinyint DEFAULT 0 NOT NULL,
   area_name                   varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
@@ -218,7 +219,7 @@ CREATE TABLE mrbs_zoneinfo
 CREATE TABLE mrbs_sessions
 (
   id      varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  access  int unsigned DEFAULT NULL,
+  access  int unsigned DEFAULT NULL COMMENT 'Unix timestamp',
   data    text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
 
   /* Note that there is a limit on the length of keys which imposes a constraint

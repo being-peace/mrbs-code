@@ -91,12 +91,12 @@ $vocab["rep_end_date"]       = "Дата окончания повторения
 $vocab["rep_rep_day"]        = "Дни повторения";
 $vocab["ctrl_click"]         = "Используйте Control-Click чтобы выделить более одного помещения";
 $vocab["entryid"]            = "ID записи";
-$vocab["repeat_id"]          = "ID повторения"; 
+$vocab["repeat_id"]          = "ID повторения";
 $vocab["brief_description"]  = "Краткое описание.";
 $vocab["status"]             = "Статус";
 $vocab["public"]             = "Общедоступный";
 $vocab["private"]            = "Частный";
-$vocab["unavailable"]        = "Частный";
+$vocab["unavailable"]        = "[Частный]";
 $vocab["is_mandatory_field"] = "это обязательное поле, пожалуйста, введите значение";
 $vocab["missing_mandatory_field"] = "Вы не заполнили обязательные поля";
 $vocab["confirmed"]          = "Подтверждено";
@@ -167,7 +167,7 @@ $vocab["reason"]              = "Причина";
 $vocab["info_requested"]      = "Информация запрошена";
 $vocab["min_time_before"]     = "Минимальный интервал между текущим временем и началом бронирования";
 $vocab["max_time_before"]     = "Максимальный интервал между текущим временем и началом бронирования";
-$vocab["max_booking_duration"]    = "Максимальный интервал бронирования";
+$vocab["max_booking_duration"]    = 'Максимальный интервал бронирования %1$d %2$s';
 
 // Used in pending.php
 $vocab["pending"]            = "Бронирование ожидает утверждения";
@@ -371,8 +371,7 @@ $vocab["about_mrbs"]         = "О системе";
 $vocab["database"]           = "База данных";
 $vocab["system"]             = "Система";
 $vocab["servertime"]         = "Время сервера";
-$vocab["please_contact"]     = "Пожалуйста, свяжитесь с ";
-$vocab["for_any_questions"]  = "по любым вопросам, на которые здесь нет ответа.";
+$vocab["please_contact"]     = "Пожалуйста, свяжитесь с %s по любым вопросам, на которые здесь нет ответа.";
 
 // Entry types
 $vocab["type.I"]             = "Внутренний";

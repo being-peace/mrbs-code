@@ -4,15 +4,23 @@
 
 REQUIREMENTS
 ---------------------------------------------------------------------------
-MRBS works with both MySQL (Version 5.5.3 and above) and PostgreSQL
-(Version 8.2 and above) systems. You must have at least PHP 7.2, with support
-for your chosen database system installed and working for this application.
-See the PHP (www.php.net), MySQL (www.mysql.com), and PostgreSQL
-(www.postgresql.org) sites for more info on setting these up.   You need
-to know how to install, secure, run, maintain, and back up your chosen database system.
+MRBS works with both MySQL (Version 5.5.3 and above, though MySQL Version
+5.7.5 and above or MariaDB Version 10.0.2 and above are recommended) and
+PostgreSQL (Version 8.2 and above) systems.  [The reason that if you are using
+MySQL you are recommended to use MySQL Version 5.7.5 and above or MariaDB
+Version 10.0.2 and above is that these versions support multiple locks and thus
+enable MRBS to use a custom database session handler.  This is more secure than
+the standard file based session handler, easier to configure and enables MRBS
+to be used on clustered web servers.]
 
-MRBS also requires that 'iconv' PHP extension, to provide
-internationalisation.
+You must have at least PHP 7.2.5, with support for your chosen database system
+installed and working for this application. See the PHP (www.php.net), MySQL
+(www.mysql.com), and PostgreSQL (www.postgresql.org) sites for more info on
+setting these up.   You need to know how to install, secure, run, maintain,
+and back up your chosen database system.
+
+MRBS also requires that 'iconv' PHP extension, to provide internationalisation.
+The 'intl' and 'mbstring' extensions are recommended.
 
 You can run PHP either as a CGI or with a direct module interface (also called
 SAPI). These servers include Apache, Microsoft Internet Information Server,
@@ -27,9 +35,11 @@ child server to the database.
 Also many MRBS authentication schemes use basic HTTP authentication. These
 don't work if you run PHP as a CGI.
 
-If you are using PHP as an Apache module, you probably want to ensure that
-the Apache MaxRequestsPerChild is not set to 0, in case of undetected memory
-leaks in PHP or MRBS.
+If you are using PHP as an Apache module, you probably want to ensure that the
+Apache MaxConnectionsPerChild (aka. MaxRequestsPerChild in Apache pre-v2.3.9)
+is not set to 0, in case of undetected memory leaks in PHP or MRBS. In Ubuntu
+25.10 this can be found in the mpm_prefork.conf file, located in
+/etc/apache2/mods-available/.
 
 OVERVIEW
 ---------------------------------------------------------------------------
@@ -168,10 +178,10 @@ as long as it is in the permitted set, ie a letter, number or underscore.
 restrictions on the characters allowed in order to simplify the code. For
 a technical explanation see below).
 
-At the moment only text, varchar, date (user table only), decimal/numeric,
-int, smallint and tinyint columns are  supported, displayed as textarea, text,
-date, number or checkbox fields as appropriate.  Whether a varchar is displayed
-as a text or textarea input depends on its maximum length, with the breakpoint
+At the moment only text, varchar, date, decimal/numeric, int, smallint and
+tinyint columns are  supported, displayed as textarea, text, date, number
+or checkbox fields as appropriate.  Whether a varchar is displayed as a text
+or textarea input depends on its maximum length, with the breakpoint
 determined by a configuration variable. Ints are treated as integer types, as
 you would expect.   However smallints and tinyints are assumed to be booleans
 and are displayed as checkboxes.
@@ -241,6 +251,15 @@ would define the 'conference_facilities' custom field to be mandatory.
 In the case of a select field, this adds an empty value to the dropdown
 list.
 
+For the entry table only, you can also specify that the field should be mandatory
+only for specific areas, by setting the value to an array of area IDs. For example:
+
+$is_mandatory_field['entry.conference_facilities'] = [1, 3];
+
+would define the 'conference_facilities' custom field to be mandatory only
+for the areas with ID 1 and 3. For other areas the field will exist but not
+be mandatory.
+
 Making a checkbox field mandatory is possible and requires the
 checkbox to be ticked before the form can be submitted.   This can be
 useful for example for requiring users to accept terms of service or
@@ -281,6 +300,7 @@ Technical explanation of the restriction on column names for custom fields
 // - as the column name in the database
 // - as part of an HTML name attribute for a form input
 // - as part of a PHP variable name
+// - as part of a property name in an iCalendar file
 //
 // MySQL, PostgreSQL, HTML and PHP all have different rules for these tokens:
 // - MySQL: almost anything is allowed except that:
@@ -312,17 +332,23 @@ Technical explanation of the restriction on column names for custom fields
 //   underscores ("_"), colons (":"), and periods (".")."
 //   (http://www.w3.org/TR/html401/types.html#type-cdata)
 //
+// - iCalendar: A name consists of ALPHA / DIGIT / "-" characters.
+//
 // In order to avoid complications with using names in each of these contexts,
 // we restrict custom field names to the set of names which conforms to all
-// four rules, taking into account the fact that when MRBS uses column names
+// five rules, taking into account the fact that when MRBS uses column names
 // in PHP and HTML it always prefixes them with a string beginning with a letter.
 // This gives us the rule that custom field names must consist of letters,
-// numbers or underscores.
+// numbers or underscores (which are converted to hyphens when exported to an
+// iCalendar file).
 
 
 CONFIGURING MRBS
 ---------------------------------------------------------------------------
-Next, you will need to customize the file "config.inc.php"...
+Next, you will need to create and customize the file "config.inc.php"...
+
+First of all copy the file config.inc.php-sample to config.inc.php.  Then you
+need to edit the settings in that file and add other settings as required.
 
 As a minimum you will need to set the timezone and the database variables.
 Other settings can be changed by copying lines from systemdefaults.inc.php and
@@ -384,6 +410,11 @@ Then define your database connection parameters. Set the values for:
     $db_database =  The name of the database containing the MRBS tables.
     $db_login =     The database login username
     $db_password =  The database login password for the above login username
+
+If you are using cPanel on your web server, make sure you include the prefix,
+typically 8 characters followed by an underscore, in your database name and
+database username.  For example $db_database = "abcdefgh_mrbs". (Note: this
+prefix is not the same as the table prefix below.)
 
 If the database server and web server are the same machine, use
 $db_host="localhost". Or, with PostgreSQL only, you can use $db_host="" to
@@ -500,7 +531,10 @@ In multisite mode a single instance of the MRBS code can serve a number of
 sites. Each site has its own config file in the sites/<sitename> directory
 which will override any settings in the global config file.  At a minimum
 the local config file will contain a table prefix for the site, but can also
-contain any other config settings including a theme and custom CSS.
+contain any other config settings including a theme and custom CSS.  The sites
+are reached by specifying the sitename in the query string, eg
+
+index.php?site=sitename
 
 Individual sites can even have their own authentication methods, but note that
 authentication against WordPress multisite is not supported.

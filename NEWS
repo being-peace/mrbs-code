@@ -7,6 +7,1079 @@
 [============================]
 
 -------------------------------------------------------------------------------
+Version 1.12.2 (Tue 26th May 2026):
+
+[*] Check that the default email address is valid.
+
+[-] Fix uncaught exception when exporting an entry created by a user that no longer exists.
+
+[-] Fix uncaught exception when the locale is 'ca'.  See GitHub Issue #4008.
+
+[-] Fix incorrect error when the required PDO driver is not installed.
+
+[-] Fix bug when there are recipients on the 'Cc' or 'Bcc' lines, but not the 'To' line.
+
+[-] Fix PHP 8.5 deprecation error ("Using null as the key parameter for array_key_exists() is
+ deprecated, use an empty string instead").
+
+[-] Prevent open redirects from location_header function.
+
+[-] Fix potential open redirects in the rest of MRBS.
+
+[-] Fixed unauthenticated open redirect in kiosk mode. (CVE-2026-46688)
+
+[-] Fixed potential Server Side Request Forgery in import functionality. (CVE-2026-46382)
+
+[*] Add recommendation for 'intl' and 'mbstring' extensions.
+
+[*] Improve testing of locale availability on Windows when the 'intl' extension is installed.
+
+[*] Add Danish translations.  See GitHub Issue #3932.
+
+[*] Various improvements for localisation, implementation of a new Language class.
+
+[*] Enable/disable the running of assertions depending on the setting of $debug.
+
+[*] Upgrade to PHPMailer Version 7.0.1.
+
+[*] Add no-no as an alias for nb-no.
+
+[-] Fix bug when using the 'nb' locale without the 'intl' extension.
+
+[*] Delete lang.nn and lang.no leaving just lang.nb.  See GitHub Issue #3922.
+
+[-] Fix bug when entering kiosk mode.  See GitHub Issue #3944.
+
+[-] Fix bug in kiosk mode when in multisite mode.  See GitHub Issue #3944.
+
+[*] Populate custom fields for new entries with default values based on the database defaults.
+
+[*] Make sorting of usernames case-insensitive
+
+[*] Make sorting of display names case-insensitive
+
+[+] Added new ICalendar components.
+
+[+] Added export and import of custom fields.
+
+[*] Update Spanish language file.  Thanks to Andrés Sierra.
+
+[-] Fix TypeError when using an authentication scheme, eg SAML, that pulls in a later
+ version of Psr\Log\LoggerInterface.  See GitHub Issue #3956.
+
+[*] Prevent drag-select of slots if booking is not allowed.  See GitHub Issue #3958.
+
+[-] Fix problem with the not-allowed cursor appearing on Firefox.  See GitHub Issue #3958.
+
+[-] Fix TypeError when $url_base starts with '//'.  See GitHub Issue #3959.
+
+[*] Update tzurl files.  See GitHub Issue #3960.
+
+[*] Upgrade to PHPMailer 7.0.2.
+
+[-] Fix bug that resulted in the area and room admins not being notified when a booking
+ is moved into their area/room.
+
+[*] Code comments converted to DocBlocks.
+
+[*] Fix PHP 8.5 deprecation message ("Case statements followed by a semicolon (;) are
+ deprecated, use a colon (:) instead")
+
+[*] Fix deprecated in PHP 8.5 use of DATE_RFC7231 constant.
+
+[+] Feature: Prevent admin from skipping booking policies
+    * Add new option: prevent_admin_skip_policies
+      Default value is false, current behaviour remains unchanged
+
+[*] Update instructions for using PHP as an Apache module.  See GitHub Issue #3963.
+
+[+] Add the ability for themes to override the standard CSS, yet still keep the ability
+ to have custom CSS.  See GitHub PR #3964.
+
+[-] Don't validate period times in Times mode.  See GitHub Issue #3972.
+
+[-] Fix bug preventing the add room form being shown when there are no enabled rooms
+ or areas.  See GitHub PR #3969 and GitHub PR #3973.
+
+[+] Add support for exempt types.
+
+[*] Add an error notice if the database server does not support multiple locks.  See
+ GitHub Issue #3983.
+
+[+] Add option to define fields as mandatory for specific areas.
+
+[*] Implement custom session handler using cookies.
+
+[-] Fix problem with Kiosk mode when using 'cookie' session scheme.  See GitHub Issue #3985.
+
+[-] Fix broken php with French localization.
+
+[+] Add a config variable, $auth["session_php"]["store_key_in_cookie"], that allows a
+ default key to be used for encrypting session data, instead of a random key stored in a
+ cookie.  Useful if for some reason PHP does not have access to $_COOKIE.  See GitHub Issue
+ #3983.
+
+[*] fix docker dev environment (#3987) (docker_app)
+
+[-] Fix bug causing editing series to fail when using prevent_simultaneous_bookings.
+ See GitHub Issue #3965.
+
+-------------------------------------------------------------------------------
+Version 1.12.1 (Fri 14th November 2025):
+
+[-] Fix TypeError causing "DataTables warning: table id=pending_table - Incorrect column count"
+ error.  See GitHub Issue #3930.
+
+[*] Provide four different language tokens for "Today" to allow sites the option of
+ having different strings in the day, week, month and year views.  See GitHub Issue #3931.
+
+
+-------------------------------------------------------------------------------
+Version 1.12.0 (Wed 12th November 2025):
+
+[-] Fix TypeError when using $max_booking_date.  See GitHub Issue #3772.
+
+[-] Fix TypeError when using $min_booking_date.  See GitHub Issue #3773.
+
+[*] Update lang.pl. Add $vocab["today"]
+
+[*] Add full description to title attribute in month view.  See GitHub Issue #3780.
+
+[*] Upgrade to PHPMailer 6.9.3.
+
+[*] Upgrade QRCode to latest code from v5.0.x branch.
+
+[*] Upgrade to jQuery 3.7.1 and jQuery Migrate 3.5.0.
+
+[*] Upgrade to jQuery UI 1.14.1.
+
+[-] Fix bug resulting in booking resizing not working.
+
+[-] Fix problem when resizing a booking past the top of the table.
+
+[-] Fix problem when resizing a booking that has a portion it of view at the bottom
+ of the table.
+
+[-] Fix problem when resizing a booking that has a portion it out of view at the left or
+ right of the table.
+
+[+] Add config setting to control auto-scrolling.  See GitHub Issue #3783.
+
+[*] Change "message" to "System message" to make its purpose clearer.  See GitHub Issue
+ #3784.
+
+[*] Make admin pages have level $max_level rather than 2.  See GitHub Issue #3785.
+
+[*] Improve the view after a booking has been saved so that the brief description is visible.
+
+[-] Fix bug causing hidden days to be disabled in custom date fields.
+
+[-] Fix bug causing the wrong timezone to be used for the "last updated" column in the
+ users list if the server timezone differs from timezone of the default area.
+
+[*] Standardise on no leading or trailing spaces for the output of the syntax_* methods.
+
+[*] Improve error handling.  See GitHub Issue #3796.
+
+[-] Fix TypeError.  See GitHub Issue #3797.
+
+[*] Improve styling by adding a margin underneath the search results heading.
+
+[*] German translation updated (#3800)
+
+[-] Fix bug resulting in an unwanted '%' appearing in text when copying email addresses.
+
+[*] Clarified documentation for configuring the database settings.  See GitHub Issue #3801.
+
+[*] Make it easier to extend the AuthDb class by removing tests of the kind
+ $auth['type'] == 'db'.  See GitHub Issue #3803.
+
+[*] Add 'last_updated' key to get_entries_by_area() and get_entries_by_room().  See
+ GitHub Issue #3791.
+
+[-] Fix bug causing incorrect end time to be shown in reports when using periods.
+
+[*] Upgrade to PHPIMAP 6.1.0.
+
+[*] Improvements to database upgrade system.
+
+[*] AuthCas: Change getLevel() method from private to protected to allow extension. 
+ See GitHub Issue #3818.
+
+[*] Enhance get_form_var() to allow arrays of bool, decimal, int or string.
+
+[*] Improve error message when an invalid email address is given for
+ $mail_settings['organizer'].  See GitHub Issue #3831.
+
+[-] Fix TypeError when viewing a period after upgrade from MRBS 1.4.7.  See GitHub
+ Issue #3832.
+
+[*] Display username if the display name cannot be found.  See GitHub Issue #3835.
+
+[-] Fix SQL truncate error when no value is given for a float custom field.
+
+[+] Add support for float custom columns
+
+[-] Fix bug preventing the "last login" column from being sorted if it contains null
+ values.
+
+[+] Add new config setting $default_duration_periods.  See GitHub Issue #3829.
+
+[*] Remove hard-coded square brackets text.  See GitHub Issue #3843.
+
+[+] Add the ability to set php.ini directives using the $ini_directives config variable.
+
+[+] Add a configuration option to allow ordinary users to delete other users' registrations.
+
+[*] Upgrade PHPMailer to Version 6.10.0 introducing full support for RFC 6531 SMTPUTF8,
+ meaning that you are now free to use Unicode characters in email addresses, such as
+ JøeÜser@example.com, and everywhere else, without any complicated encoding schemes. Using 
+ this feature requires that you send through a mail server that advertises support for 
+ SMTPUTF8.
+
+[*] Added an emulation of mb_strlen(), for installations where 'mb' is not
+ available.
+
+[*] Large update to internationalisation/UTF8 support, including new MRBS classes
+ and code.
+
+[*] Replace the second and subsequent spaces in a consecutive sequence with non-breaking
+ space characters to ensure that (a) they are rendered properlty in the select/datalist 
+ element and (b) passed through to the form handler properly.  See GitHub Issue #3871
+
+[*] Strip out any extra whitespace that the user may accidentally have entered in the
+ area or room name.  See GitHub Issue #3871.
+
+[*] Only show the major details for a registration event if the user has write access
+ (to avoid cluttering the page with information that won't be of any use).
+
+[*] Add a new exception class to allow differentiation between errors in the MRBS and
+ external databases.
+
+[*] Update timezone definitions.
+
+[*] Expand error message when an invalid specifier is sent in the Accept-Language
+ request header. See GitHub Issue #3888.
+
+[+] Introduce new config setting $max_slots_per_year
+
+[*] AuthWix: Remove use of curl_close() which is deprecated from PHP 8.5.
+
+[*] Fix use of PDO::MYSQL_* constants, deprecated in PHP 8.5.
+
+[*] Fix use of PDO::PGSQL_* constants, deprecated in PHP 8.5.
+
+[*] Fix use of $http_response_header, deprecated in PHP 8.5.
+
+[*] AuthCas: Fix use of curl_close(), deprecated in PHP 8.5.
+
+[*] Add a check that the repeat end date is not before the start date.  See GitHub
+ Issue #3905.
+
+[*] Prevent the repeat end date datepicker from offering a date before the start date. 
+ See GitHub Issue #3905.
+
+[*] Replace url_get_contents() with GuzzleHttp.
+
+[*] Change minimum required PHP version from 7.2.0 to 7.2.5 (needed for GuzzleHttp).
+
+[*] Fix use of deprecated (by PHP 8.5) __wakeup() magic method.  (The deprecation messages
+ can be triggered by going to index.php or admin.php, restarting the web server, then
+ refreshing the page.)
+
+[-] Fix TypeError when logging in with Joomla!  See GitHub Issue #3903.
+
+[-] Fix TypeError with custom date.  See GitHub Issue #3907.
+
+[-] Fix TypeError with custom decimal.  See GitHub Issue #3907.
+
+[-] Fix uncaught exception SQL error when using custom fields of date or decimal type
+ for which no input is given.  See GitHub Issue #3903.
+
+[+] Add encryption of session data.  Useful now, but will be more useful when we come
+ to store OAuth2 access and refresh tokens in session data.
+
+[*] Fix "Using null as an array offset is deprecated" error.
+
+[*] Upgrade to Mail version 1.10.12.
+
+[*] Upgrade to PEAR version 1.10.16.
+
+[*] Fix PHP 8.4 deprecation errors.
+
+[*] Provide a parse_addresses() function that is more robust than PHPMailer::parseAddresses()
+ which works best when the imap extension is installed. However the imap extension was removed
+ from the PHP core in PHP 8.4.
+
+[*] Upgrade to PHPMailer version 6.11.1
+
+[*] Added a logging class, which allows logging to the browser window or email.
+ Utilises Monolog and Psr/Log.
+
+[*] Move error handling functions into a class.
+
+[*] Use the same 'samesite' setting for the key cookie as the session cookie.
+
+[*] Upgrade PHPMailer to Version 7.0.0 (no change except for version number!)
+
+[+] Add duration, end time, and description (on hover) to the Bookings awaiting approval table
+    Closes #3918
+
+[-] Fix bug causing the Back button on the edit_entry page not to work when using a proxy.
+ See GitHib Issue #3915.
+
+[*] Improve Norwegian language translation.  See GitHub Issue #3922.
+
+[-] Fix bug causing the DataTables language to be set to the best available language in
+ the browser preferences, rather than the $override_locale, when the $override_locale is 
+ set to 'en-XX', where 'XX' is anything other than 'GB', for example 'en-AU'.
+
+
+-------------------------------------------------------------------------------
+Version 1.11.6 (Wed 6th November 2024):
+
+[*] Updated French translations.
+
+[*] Move password checking into a separate method in order to simplify
+ extending the class.  See GitHub Issue #3662.
+
+[*] db_ext auth scheme updated to allow any password hashing algorithm that
+ is supported by hash().
+
+[*] Updated Spanish translations.
+
+[-] Fix bug introduced in commit 15b1302e preventing "Copy email addresses"
+ button working on the Report page.
+
+[-] Fix bug causing the period to be reported incorrectly under certain
+ circumstances
+
+[-] Fix TypeError.  See GitHub Issue #3675.
+
+[*] Added all locales to Docker image (#3673)
+
+[*] Made clicking "Today" scroll to the current timeslot.
+
+[*] Code updated to declare strict types and use type declarations in
+ many places.
+
+[-] Fix uncaught exception when editing a message and using PostgreSQL.  See
+ GitHub Issue #3680.
+
+[-] Check that we have a valid Joomla user.  See GitHub Issue #3682.
+
+[*] Introduce a new config variable ($cookie_samesite_lax) allowing the
+ session cookie SameSite attribute to be relaxed from "Strict" to "Lax".
+
+[+] Add the ability to specify a set of days that cannot be used for making
+ bookings of a certain type.
+
+[*] Session token is no longer exposed in the URL, addressing a security
+ concern.
+
+[*] Updated to latest qrcode v5.0.x to fix PHP 8.4 deprecation notices.
+
+[*] Update to latest source from settings container v2.x-php7.4 branch to fix
+ PHP 8.4 deprecation notices
+
+[*] Add requirement for mbstring extension to be loaded for QR code to work.
+
+[-] Add a fix for a TypeError when $_SESSION['user'] somehow contains a zero.
+
+[+] Added ability to export bookings as ICS format from search page.
+
+[+] Add support for custom date fields in the entry table.  See GitHub Issue
+ #3701.
+
+[-] Remove multiple attribute from email field. A user can only have one
+ email address.  See also GitHub Issue #3716.
+
+[-] Add a workaround for a bug in Safari that prevents the value of an email
+ input being shown when the multiple attribute is set.  See GitHub Issue
+ #3716.
+
+[+] Add the ability to allow specified HTML tags in the calendar message.
+ See GitHub Issue #3718.
+
+[*] Remove use of deprecated in PHP 8.4 ini_set setting of
+ session.sid_bits_per_character. See
+ https://wiki.php.net/rfc/deprecations_php_8_4#sessionsid_length_and_sessionsid_bits_per_character
+
+[*] Highlight the column cell header in the all rooms view. See GitHub Issue
+ #3720.
+
+[-] Fix issue with the first row in the all rooms view being very high in
+ Firefox.  See GitHub Issue #3726.  (Not quite sure what problem that CSS
+ rule was trying to solve in the first place and why it's no longer
+ necessary.)
+
+[-] Fix bug resulting in an empty end slot selector in certain
+ circumstances.  See GitHub Issue #3741.
+
+[*] Update Catalan translation.  See GitHub Issues #3747 and #3748.
+
+[*] Add Catalan site_faq.  See GitHub Issue #3748.
+
+[*] Reduce get_bookings_in_series() to a single SQL query.
+
+[+] Added implementation of AuthImapPhp using library code instead of the
+ PHP imap extension which has been removed from PHP 8.4.
+
+[-] Fix bug resulting in incorrect period durations in reports when areas
+ have different numbers of periods.
+
+[-] Fix potential bug resulting in incorrect period durations in reports
+ when a booking spans a DST transition and areas have different numbers of
+ periods.
+
+[-] Fix bug that causes a booking to be deleted completely when editing a
+ series and changing its repeat type to "none"
+
+[-] Fix bug causing datepicker not to change dates when using Catalan
+ translation.  See GitHub Issue #3752.
+
+[-] Add missing escaping of text strings in some Javascript code.
+
+[*] In MySQL DB class, set STRICT_TRANS_TABLES so that we can detect invalid
+ values being inserted in the database.
+
+[*] Upgrade to PHPMailer Version 6.9.2.
+
+[-] Fix bug causing drag-select not to select the original cell when dragging
+ up or left.
+
+[-] Fix bug when booking is constrained to a single row or column.
+
+[*] Add check for pdo_pgsql extension.
+
+[*] Various improvements to drag booking changes.
+
+[-] Fix bug causing placeholders not to be displayed for custom fields that
+ are textareas.  See GitHub Issue #3763.
+
+[+] Add buttons in the day view to go back/forward by a week.
+
+[-] Fix bug when an admin user makes a booking and bookings are forced to be
+ private.  See GitHub Issue #3770.
+
+[*] Upgrade to latest version of phpCAS from the fork
+ https://github.com/campbell-m/phpCAS, fixing deprecation notices running
+ under PHP 8.4 (https://github.com/apereo/phpCAS is no longer maintained).
+
+[*] Upgrade to latest version of PHPIMAP from the fork
+ https://github.com/campbell-m/php-imap, fixing deprecation notices running
+ under PHP 8.4 (https://github.com/Webklex/php-imap seems not to be
+ maintained).
+
+[*] Preserve scroll position after making a booking.
+
+
+-------------------------------------------------------------------------------
+Version 1.11.5 (Mon 22nd April 2024):
+
+[-] Fix incorrect translation for Norwegian Bokmål in datepickers.  See GitHub Issues #3517.
+
+[-] Fix bug causing user searches from the user name in the header not
+ to start from the current date, as they did in MRBS 1.11.0.  See GitHub
+ Issues #3514.
+
+[-] Fix undefined variable warning when sending mail.
+
+[*] Add localised sorting for first two columns in user table.
+
+[+] Respect locale when sorting in data tables See GitHub Issues #3518.
+
+[-] Fix bug preventing Auth::sortUsers() from working properly when
+ using the Norwegian locale (and no doubt others) on Windows servers.
+
+[-] Fix problem with Joomla authentication when the Joomla LDAP authentication plugin is
+ enabled.  See GitHub Issues #3521.
+
+[+] Add export of registrants (single entry only at the moment).
+
+[+] Add import of registrants (single entry only at the moment).
+
+[-] Fix Joomla >= 4.3.0 authentication properly.
+
+[*] Various improvements for file uploads.
+
+[-] Fix bug causing the search to start from the current time on the search start date
+ rather than 00:00.  See GitHub Issue #3544.
+
+[-] Fix authentication against Joomla Version 5. See GitHub Issue #3547.
+
+[-] Fix bug when approving series.  See GitHub Issue #3549.
+
+[*] Use the IntlCalendar extension if possible to find the first day of the week in the
+ user's locale.  The week numbers in MRBS are based on the week number in the locale,
+ which won't necessarily be the ISO week number.
+
+[-] Fix bug causing times in emails to be in am/pm format not 24-hour.  See GitHub Issue #3550.
+
+[*] Add the ability to override ICU values for week numbering - useful when the ICU
+ library can't be updated.
+
+[-] Fix missing table in grant for PostgreSQL, thanks to PR #3557 by 'raff4el'.
+
+[*] SAML auth: Add an optional access control filter that requires users to be a member of
+ a configurable group in order to access the calendar. Thanks to Jonathan Gapen.
+
+[*] Made it easier to force MRBS to use strftime() instead of the intl extension. See
+ GitHub Issue #3559.
+
+[*] Add a class of 'today' to cell if it's the current day.  See GitHub Issue #3564.
+
+[*] Set secure session cookie properties.  See GitHub Issue #3568.
+
+[*] Increase the strength of the session id.
+
+[-] Fix fatal error when saving a form with a protected date field that is null.
+
+[*] Upgrade to PHPMailer Version 6.9.1.
+
+[*] Upgrade to latest version of Mail_Mime package.
+
+[*] Upgrade to latest version of PEAR.php.
+
+[*] Upgrade to latest version of pear/File_Passwd.
+
+[*] Move content ID generation into sending.
+
+[+] Add support for the altervista.org database type.  See GitHub Issue #3579.
+
+[*] Lots of updates to add strict typing.
+
+[-] Fix bug converting a pattern into a strftime format when the pattern contains
+ two consecutive tokens.  See GitHub Issue #3589.
+
+[*] Update intl types and skeletons with latest patterns.
+
+[-] Fix type error in week and month views.  See GitHub Issue #3591.
+
+[-] Fix bug causing some fields to be duplicated on DataTables export (eg to Excel).
+
+[*] Provide config variable for forcing the use of the IntlDateFormatter emulation.
+ See GitHub Issue #3559.
+
+[-]     Fix errors that are generated when the MySQL wait_timeout variable is less than
+ the time needed for some operations, eg large reports retrieving user data from an external
+ server, resulting in the MySQL connection being dropped before the operation finishes.
+ Typical error messages are "SQLSTATE[HY000]: General error: 2006 MySQL server has gone
+ away" and "Packets out of order. Expected 1 received 0. Packet size=145".
+
+[-] Fix bug when running in debug mode on systems with PHP versions before 8.1.0.
+
+[*] Extend the prevention of simultaneous bookings to include a config setting
+ ($max_simultaneous_bookings) specifying the maximum number of simultaneous bookings
+ allowed.  See GitHib Issue #3617.
+
+[*] Updated French translation.
+
+[*] Modify upgrade instructions to state that the new release should be uploaded to a
+ new directory, rather than overwriting the existing directory.  See GitHub Issue #3623.
+
+[+] Add a configuration setting to allow bookings direct from the week and month views
+ for all rooms without first going via the day view.  See GitHub Issue #3629.
+
+[-] Fix bug when making a booking that crosses a DST boundary in an area with a
+ single period.  See GitHub Issue #3628.
+
+[-] Fix problem when drag selecting rooms and some rooms aren't writable.  See GitHub
+ Issue #3632.
+
+[*] Use config file for admins if $auth['saml']['admin'] is not set.  See GitHub Issue
+ #3431.
+
+[-] Fix warning when view_entry.php can be accessed by unlogged-in users.  See GitHub
+ Issue #3634.
+
+[-] Fix fatal error when the auth type is WordPress and the mbstring extension is
+ not enabled.
+
+[*] Fix deprecation notice when running on PHP >= 8.2.
+
+[*] Allow the session name to be set to the default. (Problems have been otherwise
+ observed when running with some WordPress plugins, eg Participants Database Version
+ 2.5.7, which also use PHP sessions.)
+
+[*] CAS sessions: Force authentication rather than giving an Access Denied message.
+ See GitHub Issue #3645.
+
+
+-------------------------------------------------------------------------------
+Version 1.11.4 (Sun 24th September 2023):
+
+[-] Fix problem with not being able to press the Import button on the Import form.
+ See GitHub Issues #3466.
+
+[-] Fix problem with not being able to authenticate against Wix.  (Wix has changed the
+ names of the member properties.)
+
+[-] Fix GitHub Issue #3468. Fatal error when no locales installed.
+
+[*] Make it clear that policy limits apply per user.
+
+[-] Fix bug resulting in bookings not being displayed in some circumstances on DST
+ transition days when the start of the booking day occurs before the DST transition.
+
+[*] Remove use of assert_options() which is deprecated in PHP 8.3.
+
+[*] Created RFC5545 class.
+
+[-] Fix bug causing resizable bookings not to work in the week view.
+
+[*] Updated Brazilian Portuguese translation. Thanks to Bruno Calado. See GitHub Issues #3476.
+
+[*] Repeat logic moved into a class.
+
+[-] Fix incorrect minimum version for MariaDB.  See GitHub Issues #3481.
+
+[*] Add mailto: link to booking creator in reports.
+
+[+] Add button to copy email addresses to the clipboard in reports.  Useful for sending
+ messages to those booked on a certain day or in a certain room.
+
+[*] Make the instructions for multisite clearer.  See GitHub Issues #3483.
+
+[*] Upgrade to jQuery Version 3.7.0.
+
+[-] Fix problem with importing weekly repeats. See GitHub Issues #3485.
+
+[-] Fix problem with importing weekly repeats when BYDAY is not specified. See also
+ GitHub Issues #3485.
+
+[-] Fix bug when importing MONTHLY events and an integer modifier for BYDAY is not
+ present.
+
+[*] Upgrade to latest version of DataTables.
+
+[-] Fix bug in Copy Email Addresses button when there is no anchor.
+
+[-] Updated SimpleSAML namespace separator to backslash.
+
+[*] Add a 'required' attribute to the rep_interval field.
+
+[*] Provide a default for rep_interval to prevent uncaught exceptions on post requests.
+
+[*] Restrict ability to see email addresses in reports to admins, for privacy reasons.
+
+[*] Disallow viewing of email addresses if the email field in the users table is
+ private.
+
+[*] Add mailto: links to registrants table.
+
+[*] Add "Copy email addresses" button to registrants table.
+
+[-] MRBS Docker container will now install the PHP intl extension and PHP 8.2.
+
+[-] Fix problem with datepickers returning empty strings when Backspace or Delete is
+ pressed.
+
+[*] Upgraded to PHPMailer 6.8.1.
+
+[-] Fix problem with getting ISO Date strings in timezones other than UTC.
+
+[-] Fix problem with the wrong minicalendars being shown in the month view when you're
+ at the end of the month (eg Aug 31) and the next month has fewer days than the current
+ one.
+
+[-] Reduce stream timeout.  See GitHub Issues #3497.
+
+[-] Fix bug causing the EXDATE property to be ignored when importing events.
+
+[-] Fix bug producing incorrect .ics files when exporting a series with a changed entry.
+
+[-] Fix bug when importing a series with a changed entry.
+
+[+] Add export and import of registration details (but not registrants at this stage).
+
+[*] Handle invalid timezones on import.
+
+[*] Internationalise bad timezone message.
+
+[*] Throttle the Ajax requests to del_entries.php.
+
+[*] Improve performance of bulk deletion.
+
+[-] Fix bug causing repeated deletion of entries after a cancellation.
+
+[*] Add some basic language versions of the DataTables language files which are copies
+ of the main country specific version (eg fr.json is a copy of fr-FR.json).  See GitHub
+ Issue #3502.
+
+[-] Fix potential PHP deprecation notice.
+
+[*] Initial shot at preventing users with bookings in the system from being deleted.
+
+[-] Fix bug allowing private entry information to be displayed in the week (single
+ room) view.  See GitHub Issues #3510.
+
+[*] Add server-side checking of whether users can be deleted.
+
+[+] Add a configuration option to prevent the deletion of users that appear in bookings.
+
+[-] Fix problem with PDF landscape orientation not being respected on some clients.  See
+ GitHub Issues #3512.
+
+[-] Remove repeated colons in Norwegian translations.
+
+[-] Fix bugs in use of $mincals_week_numbers and $view_week_number.  See GitHub Issues #3515.
+
+[*] Only display week numbers in the mini-calendars if the week starts on a Monday, the start of the
+ ISO week.
+
+
+-------------------------------------------------------------------------------
+Version 1.11.3 (Wed 12th July 2023):
+
+[*] Some code improvements.
+
+[-] Remove strict types declaration causing uncaught exceptions on some systems.
+
+
+-------------------------------------------------------------------------------
+Version 1.11.2 (Tue 11th July 2023):
+
+[*] Various code tidying/improvements.
+
+[-] Fix SF Bugs #546.
+
+[*] Avoid hidden days when navigating between months.
+
+[-] Fixed potential bug in debug output.
+
+[-] Fixed reported XSS vulnerability in mrbsCheckPolicy() - only exploitable by an administrator
+ with permissions to name rooms. Thanks to Nguyễn Hữu Cường for the report. (SF Bugs #547)
+
+-------------------------------------------------------------------------------
+Version 1.11.1 (Mon 3rd July 2023):
+
+[*] Added type declarations across the codebase.
+
+[-] Bug fixes for running kiosk mode with periods.  See SF Support Requests #2671.
+
+[-] Fixes kiosk mode when using Joomla.  See SF Support Requests #2671.
+
+[-] Fixes bug in email notifications when switching a series to a monthly repeat from another type.  See SF Bugs #533.
+
+[-] Fixes uncaught exception when an invalid date is given.  Now today's date is used.  See GitHub Issues #66.
+
+[*] Allows no from date to be used, resulting in all search results to be returned.  See GitHub Issues #66.
+
+[*] Fixes problem with multi-line vocab strings.  See GitHub Issues #65.
+
+[*] Updates for 'nl' translation.
+
+[*] Adds a progress bar and Cancel button while entries are being deleted from the Report page.  See SF Support Requests #2672.
+
+[*] Improved internationalisation of language string.
+
+[-] Fixes bugs when the description is null (which it can be when an event without a description is imported).
+
+[-] Fixed fatal infinite loop when using $auth["session_php"]["inactivity_expire_time"].
+
+[*] Upgrades flatpickr to 4.6.13 fixing GitHub Issue #70.
+
+[-] Fixed bug in Algerian version of flatpickr.
+
+[-] Fixed bug in Serbian Cyrillic version of flatpickr
+
+[*] Added a timeout on the Exit Kiosk mode page - see SF Support Requests #2425.
+
+[*] Added a timeout to exit kiosk mode dialog box.
+
+[*] Changed jQuery UI theme to Cupertino.
+
+[*] Added an additional MIME type for importing zip files.
+
+[-] Fixed bug in mail notifications when a custom field is nullable.  See SF Support Requests #2682.
+
+[-] Fixed potential bug when the display_name is not set.
+
+[*] Upgraded to jQuery version 3.6.3.
+
+[*] Improved detection of database type.  See GitHub Issues #72.
+
+[*] Improved error message when the PDO MySQL driver is not enabled. See SF Support Requests #2691.
+
+[-] Fixed bug when the database VTIMEZONE component doesn't contain a TZURL property.  See SF Bugs #537.
+
+[-] Fixed bug - added formnovalidate to the Back button.
+
+[-] Fixes GitHub Issue #74.
+
+[*] Added parameter to force Select2 to be used on mobile devices.
+
+[-] Fixes syntax error exposed by PostgreSQL 15.  See SF Patches #123.
+
+[-] Fixes bug that results in missing series when producing .ics reports using PostgreSQL.
+
+[*] Upgraded to PHPMailer 6.8.0.
+
+[-] Fixed uncaught exception.  See SF Bugs #540.
+
+[+] Allowed anonymous booking.  See SF Support Requests #2725.
+
+[*] Fixes error in Korean language string. See SF Support Requests #2729.
+
+[-] Fixed bug causing spurious validation message when $is_mandatory_field[entry.xxx] is set to false.
+ See SF Support Requests #2733.
+
+[-] Fixed bug when the timezone definition in the database has expired and MRBS is unable to get a
+ new one from the URL
+
+[*] Adds fallback mail language.
+
+[*] Removed deprecated usage of strftime, using IntlDateFormatter if available and a simple
+ emulation if it's not.
+
+[*] Updated 'ms' translation (Malay).
+
+[-] Fixes bug when curl_exec has been disabled.  See SF Support Requests #2744.
+
+[*] Adds support for Percona version checking.  See SF Support Requests #2744.
+
+[-] Fixes bug when trying to create a daily series by dragging in the week view.  See SF
+ Support Requests#2748.
+
+[+] Added new Dockerfile and GitHub Actions to build an MRBS container on release.
+
+[*] Remove use of $twentyfourhour_format.
+
+[*] Add setting UTF-8 variants of 'C' as a fallback locale.  See GitHub Issues #80.
+
+[*] Eliminate a call to mutex_lock().  See SF Bugs #543.
+
+[*] Add syntax_upsert() method into DB abstraction class.
+
+[*] Add the datepicker language as a query string parameter to prevent problems with browser caching.
+
+[*] Remove an unnecesary call to mutex_lock().  Any problems will be caught by the transaction.  See
+ SF Bugs #543.
+
+[+] Add the ability to have separate datetime formats in reports.
+
+[-] Issue #82: Fix lang file include.
+
+[-] Fix uncaught exception error when following a link to a booking from an email when not logged in.
+
+[-] Fix display of unnecessary colon when approval is enabled and an entry owned by someone
+ else is being viewed by an ordinary user.  See SF Support Requests #2766.
+
+[-] Set LDAP admin level to $max_level instead of 2.  See SF Support Requests #2763.
+
+[*] Swap the priority of $cli_language and $override_locale when determining which locale to use.
+ It was always intended that $override_locale should override everything else.
+
+[-] Fix "Unknown database type '(Ubuntu)'" problem on some Ubuntu systems.  See SF Bugs #545.
+
+[+] Feat: make it possible to get display name from saml
+
+[-] Fixed bug when authenticating against Joomla 4.3.0 or above.  See SF Feature Requests #455.
+
+[-] Fix problem with occasional "Trying to destroy uninitialized session" warnings.
+
+[+] Add a config option $always_offer_view_all to allow sites to give users the option of the
+ view_all view even if there's only one room.
+
+
+-------------------------------------------------------------------------------
+Version 1.11.0 (Tue 27th December 2022):
+
+[-] Fixed bug when $auth['db_ext']['column_name_level'] is not set.  See SF Support Requests #2470.
+
+[*] PHP 8.2 compatibility fixes.
+
+[*] Cached the results of getUser() for all auth types to improve performance.
+
+[-] Fixed bug in display of report table when there are no bookings that have registration enabled.
+
+[*] Added the name, if different, of the person who registered someone in the list of registrants in reports.
+
+[*] Added a configuration variable to determine whether or not to include in reports the name of the person
+ making the registration.
+
+[+] Added support for custom integer fields in the users table.
+
+[*] Improved performance of db_ext authentication type.
+
+[-] Fixed bug causing registration opening and closing times not to account for DST transitions properly.
+
+[-] Fixed bug causing end_date not to be restored on the booking form after a conflict on a multi-day booking.
+
+[-] Fixed bug causing end_date not to be restored on the booking form after a conflict on a multi-day booking
+ - for existing bookings
+
+[*] Made the Wix backend limit a configuration setting.
+
+[*] Made the Wix display name property a configuration variable.
+
+[-] Fixed bug causing a textarea to appear instead of a select or datalist element when the column length
+ exceeds $text_input_max.
+
+[-] Fixed problem with positioning of the eye icon on the password reset page.
+
+[-] Fixed bug when Wix can't find a username.
+
+[*] Allowed for a more appropriate login placeholder for those authentication types that only validate by email address.
+
+[*] Made the $faqfilelang config setting more intuitive, whilst maintaining backwards compatability.  See SF Bugs #517.
+
+[*] Wix authentication: switched to using badges instead of custom fields to determine MRBS admins as custom fields can
+ be edited by members themselves in their profile.
+
+[*] A lot of code simplification/tidying/improvement.
+
+[*] Improved performance of Search and Report when working with external authentication types.
+
+[*] Switched to using a config variable for determining whether to get display names all at once.
+
+[*] Improved performance of calendar views when using registration and a remote authentication type.
+
+[*] Improved performance of view_entry.php when using registration and a remote authentication type.
+
+[-] Fixed bug causing incorrect registration opening and closing times to be used when generating a
+ series with conflicts and the "Skip past conflicts" box is not checked.
+
+[*] Made DataTables respect the sort order defined on the report form.  See SF Support Requests #2498.
+
+[*] Added config settings for the default values of the Sort by and Sum by fields on the Report page.
+
+[*] Made the value of the PARTSTAT property in iCal notifications a config setting.  See SF Support Requests #2503.
+
+[*] Added a class ("weekend") to weekend header cells so that a style can be applied. See SF Support Requests #2504.
+
+[-] Fixed bug causing checkmarks not to show up in Excel exports from the users table.
+
+[*] Added class of 'mrbs-weekend' to flatpickr weekend days.  See SF Support Requests 2507.
+
+[-] Fixed bug in import.php when $booking_types is unset.  See SF Bugs #519.
+
+[*] Upgraded to PHPMailer Version 6.7.1.
+
+[-] Fixed problem with username.  See SF Bugs #518.
+
+[*] Updated Spanish translation.  Thanks to Andres Sierra.
+
+[-] Fixed bug when using a custom field of type DECIMAL and no form value is input.
+
+[*] Improved performance of curl requests by using compression if possible.
+
+[-] Fixed bug resulting in users sometimes not being able to register even though registration was open.
+
+[*] Improved internationalisation.
+
+[+] Added email obfuscation.
+
+[*] Added email links (when sensible) for Created By and Modified By on the view_entry page.  See
+ SF Support Requests #2545.
+
+[*] Update jQuery UI to v 1.13.2.
+
+[-] Fixed bug causing MRBS to return to the wrong view after making a booking.  See SF Support Requests #2552.
+
+[-] Fixed bug causing registration settings to be lost on resizing.
+
+[*] Added error handling to Ajax post requests on resizing a booking.  See SF Bugs #524.
+
+[-] Fixed bug resulting in an uncaught exception (database integrity constraint violation) if you try and
+ rename a room to a room that already exists but is in a different case.  That was because the test to check
+ if the name is in use was case sensitive, whereas the database collation was case insensitive.
+
+[+] Added the option to include registrants' usernames in reports.
+
+[+] Added the ability to configure placeholders for text fields in the edit_entry form.  See GitHub Issue #41.
+
+[-] Fixed problem with case insensitive admin name checking when using non-ANSI characters, eg "Ändra"
+ and "ändra".  See also GitHub Issues #44.
+
+[*] Converted to using locale aware version of strcasecmp().
+
+[*] Updated the instructions for creating the config file.  See SF Support Requests #2568.
+
+[-] Fixed fatal error on systems where PHP_INT_MAX is greater than the maximum value allowed by the database
+ column type.
+
+[-] Fixed potential bug.  See GitHub Issues #47.
+
+[-] Fixed problem when comparing certain strings in some locales.  See GitHub Issues #46.
+
+[*] Improved error handling.  See GitHub Issues #50.
+
+[+] Added an option for ordinary users to be able to create registration bookings.
+
+[*] Removed redundant code now that the minimum PHP version is 7.2.0.
+
+[*] Improved error handling in the case of invalid dates.
+
+[-] Fix for the issue identified in GitHub Pull Request #54.
+
+[*] Added highlight of current period on mini calendar.
+
+[*] Stored the last page as a session variable so that it can be used instead of $_SERVER['HTTP_REFERER']
+ when the Referrer-Policy is set to strict-origin.  See GitHub Issue #57.
+
+[*] Changed the implementation of mutex_lock() in DB_pgsql.php to use PostgreSQL advisory locks,
+ avoiding the more heavy-handed table locks that were used previously and more closely matching the
+ DB_mysql.php implementation.
+
+[*] Improved identification of version for MySQL databases.
+
+[+] Added check for minimum versions of MySQL/MariaDB.
+
+[-] Fixed bug preventing sessions from working when using certain versions of PHP.
+ See https://github.com/php/php-src/issues/9668.
+
+[*] Truncated lock names in MySQL as since MYSQL 5.7.5 they are restricted to 64 characters.
+
+[-] Fixed bug when authenticating against Joomla! Version 3.
+
+[*] Changed the way that the session.gc_maxlifetime variable is set so that it now respects an
+ existing setting if that is greater than $auth["session_php"]["session_expire_time"].
+
+[*] Added the user's email address as a Reply-To address by default.  This can be disabled by
+ a config setting to bring the behaviour back to how it used to be.  See SF Support Requests #2621.
+
+[*] Upgraded to jQuery 3.6.1.
+
+[-] Fixed bug resulting in "Invalid page_date yyyy-mm-dd to yyyy-nn-ee" message when a user clicks
+ on multiple dates in the mini-calendars in succession on a slow server.
+
+[*] Added a CSS class for weekend days.
+
+[+] Added support for defining holidays.
+
+[+] Added the ability to prevent bookings at weekends.
+
+[*] Added French translations.  Thanks to Philippe.
+
+[*] Added support for database driver options.  See SF Support Requests #2634.
+
+[-] Fixed occasional incorrect determination of cookie path.
+
+[-] Fixed bug when using CAS authentication.
+
+[*] Upgraded to phpCAS 1.6.0.  See SF Bugs #532.
+
+[*] Updated german translations, thanks to Fabian Ascheberg.
+
+[*] Added the ability to define paper size and page orientation for Excel output.
+
+[-] Fixed when importing events with a relative monthly repeat (eg "every third Tuesday").
+
+[-] Fixed bug when importing a series with INTERVAL > 1.  See SF Support Requests #2656.
+
+[*] Made the DataTables stateSave and stateDuration options configurable and changed the
+ default for stateDuration from 7200 seconds to 0 (ie indefinite).
+
+[*] Updated licence info.
+
+[*] Added a tooltip explaining how to deselect an option.  See GitHub Issues #61.
+
+[*] Made use of Control-Click terminology consistent.
+
+
+-------------------------------------------------------------------------------
 Version 1.10.0 (Mon 29th November 2021):
 
 [*] Updated minimum PHP version to 7.2.
@@ -60,7 +1133,7 @@ initialisation to be disabled when using SAML.  See SF Support Requests #2390.
 
 [*] Improved print layout.
 
-[*]  Improved fix if no booking types are set. 
+[*]  Improved fix if no booking types are set.
  See https://github.com/meeting-room-booking-system/mrbs-code/issues/11#issuecomment-90
 
 [*] Improved documentation on auth/session classes.
