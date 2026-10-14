@@ -94,4 +94,23 @@ $mail_settings['from'] = 'admin@heckenrose.info';
 $timezone = "Europe/Paris";
 $dbsys = "mysql";
 
-require("access.inc.php");
+$local_config = getenv('MRBS_LOCAL_CONFIG');
+
+if (($local_config === false) || ($local_config === ''))
+{
+  require("access.inc.php");
+}
+else
+{
+  $resolved_local_config = realpath($local_config);
+
+  if (($resolved_local_config === false) ||
+      !is_file($resolved_local_config) ||
+      !is_readable($resolved_local_config) ||
+      (strpos($resolved_local_config, __DIR__ . DIRECTORY_SEPARATOR) === 0))
+  {
+    throw new \RuntimeException('MRBS_LOCAL_CONFIG must point to a readable config outside the web root.');
+  }
+
+  require $resolved_local_config;
+}
