@@ -6,29 +6,11 @@ namespace MRBS;
 // $enable_pwa = True;
 
 $user_can_edit_profile = True;
-$mrbs_company = "Hecken-mobil-E";
 $vocab_override['en']['mrbs'] = "";
 $vocab_override['de']['mrbs'] = "";
+$vocab_override['de']['createdby'] = "Fahrerin/Fahrer";
 $confirmation_enabled=false;
-unset($booking_types);    // Include this line when copying to config.inc.php
-$booking_types[] = "N";
-$booking_types[] = "C";
-$booking_types[] = "E";
-$auth['admin_only_types'] = array('C','E');
-$vocab_override["en"]["type.N"] =     "Normal";
-$vocab_override["en"]["type.C"] =     "Cancelled";
-$vocab_override["en"]["type.E"] =     "Extern";
-//$color_types["N"]="#1976D2"; Does not work, possibly  Themes/styling.inc is loaded later
-
-// Header
-$vocab_override['de']['custom_header'] = "Weitere Autos:<br>Caddy: Markus 0160-7805544<br>Lastenrad, Volvo: Kai 0172-5163942<br>Leaf: Miriam 01573-7295808<br>Fabia: Sonja 7899552";
-
-
-//km
-$vocab_override['de']['entry.custom_km'] = "Kilometer pro Tag";
-$select_options['entry.custom_km'] = array('0-1' => '< 80 km',
-                                           '1-2' => '80 km-160 km',
-                                           '2-9' => '>160 km');
+unset($booking_types);
 
 $min_booking_admin_level = 1;
 $allow_cli = true;
@@ -48,7 +30,6 @@ $auth['deny_public_access'] = true;
 // $default_name = "Fahrziel";
 
 $custom_css_url = 'local/custom.css';
-$custom_js_url = 'local/custom.js';
 
 $vocab_override['de']["no_rooms_for_area"]  = "Der Bereich enthält keine Ressource";
 $vocab_override['de']["select_room"]        = "Ressource auswählen";
